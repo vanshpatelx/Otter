@@ -6,7 +6,6 @@ import {
   Check,
   X,
   Terminal,
-  KeyRound,
   Plus,
   Trash2,
   Globe,
@@ -149,6 +148,108 @@ function SideRail({
       <div className="mt-auto" />
       <Item icon={Plus} label="Add machine" onClick={onAdd} />
     </nav>
+  );
+}
+
+/** Starter prompts, offered when a chat is empty so the first move is one click. */
+const EXAMPLE_PROMPTS = [
+  "Explain what this project does and how it's structured.",
+  "Find and fix any bugs you can spot.",
+  "Add tests for the main module.",
+  "Review my most recent changes.",
+];
+
+/**
+ * What a fresh chat shows instead of a blank void.
+ *
+ * A single grey line read as "nothing here"; this says where the agent will run
+ * and offers a few concrete openings that drop straight into the input, so a new
+ * user has an obvious first move rather than a cursor and a shrug.
+ */
+function EmptyChat({ workspaceName, onPick }: { workspaceName: string; onPick: (p: string) => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#071950] shadow-sm">
+        <Logo className="h-6 w-7" />
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm font-medium">
+          Chatting in <span className="text-foreground">{workspaceName}</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          The agent runs in that directory. Ask it anything, or start with one of these.
+        </p>
+      </div>
+      <div className="flex max-w-md flex-wrap justify-center gap-2">
+        {EXAMPLE_PROMPTS.map((prompt) => (
+          <button
+            key={prompt}
+            onClick={() => onPick(prompt)}
+            className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The chat composer: an input that grows with the message.
+ *
+ * A single-line field was wrong for an agent chat — the moment you paste a stack
+ * trace or a few lines of code it scrolls out of sight. This grows from one line
+ * to a handful, sends on Enter, and keeps Shift+Enter for a newline, with the
+ * shortcut spelled out so the behaviour is discoverable.
+ */
+function ChatComposer({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  disabled: boolean;
+  placeholder: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Grow to fit the content, capped so a long paste scrolls instead of eating
+  // the whole panel.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [value]);
+
+  return (
+    <div className="relative flex-1">
+      <textarea
+        ref={ref}
+        rows={1}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="flex max-h-40 w-full resize-none rounded-md border border-input bg-background px-3 py-2 pr-16 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+      />
+      {value.trim() && (
+        <span className="pointer-events-none absolute bottom-2 right-2.5 hidden text-[10px] text-muted-foreground/70 sm:block">
+          ↵ send · ⇧↵ newline
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -521,10 +622,10 @@ export function App() {
 
               <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
                 {messages.length === 0 ? (
-                  <p className="mt-8 text-center text-sm text-muted-foreground">
-                    Chatting in <span className="font-medium">{active.workspace.name}</span> — the
-                    agent runs in that directory.
-                  </p>
+                  <EmptyChat
+                    workspaceName={active.workspace.name}
+                    onPick={(p) => setDraft(p)}
+                  />
                 ) : (
                   (() => {
                     const rendered = groupIntoSteps(messages);
@@ -568,13 +669,13 @@ export function App() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 border-t p-3">
-                <Input
+              <div className="flex items-end gap-2 border-t p-3">
+                <ChatComposer
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && void submitChat()}
-                  placeholder={connected ? `Message the agent in ${active.workspace.name}…` : "Connecting…"}
+                  onChange={setDraft}
+                  onSubmit={() => void submitChat()}
                   disabled={!connected}
+                  placeholder={connected ? `Message the agent in ${active.workspace.name}…` : "Connecting…"}
                 />
                 <SchedulePicker
                   disabled={!connected}
@@ -859,9 +960,9 @@ function CommandRunner({
             value={cmd}
             onChange={(e) => setCmd(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            placeholder="git status · npm test · docker ps"
+            placeholder="e.g. npm test"
             disabled={!connected}
-            className="font-mono text-xs"
+            className="min-w-0 font-mono text-xs"
           />
           <Button size="sm" onClick={submit} disabled={!connected || !cmd.trim()}>
             Run
@@ -902,17 +1003,33 @@ function PairingScreen({
   const [url, setUrl] = useState(DEFAULT_URL);
   const [code, setCode] = useState("");
   const submit = () => code.trim() && onPair({ url: url.trim(), token: code.trim() });
+  // No Cancel means there is nothing to go back to — this is the first run, so
+  // it doubles as the welcome and leans into the brand rather than a bare form.
+  const firstRun = !onCancel;
   return (
     <div className="flex h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <KeyRound className="h-5 w-5" />
+          <div className="mx-auto mb-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#071950] shadow-sm">
+            <Logo className="h-6 w-7" />
           </div>
-          <CardTitle>Add a machine</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Enter its address and the code from <code className="text-xs">aiw worker status</code>.
-          </p>
+          {firstRun ? (
+            <>
+              <CardTitle className="text-xl">Welcome to Otter</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Your AI coding agents, on every machine you own. Pair a
+                workstation to get started.
+              </p>
+            </>
+          ) : (
+            <>
+              <CardTitle>Add a machine</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Enter its address and the code from{" "}
+                <code className="text-xs">aiw worker status</code>.
+              </p>
+            </>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
@@ -932,6 +1049,12 @@ function PairingScreen({
           <Button className="w-full" disabled={!code.trim()} onClick={submit}>
             Connect
           </Button>
+          {firstRun && (
+            <p className="text-center text-xs text-muted-foreground">
+              Run <code className="text-[11px]">aiw worker start</code> on a machine, then enter its
+              code above.
+            </p>
+          )}
           {onCancel && (
             <Button variant="ghost" size="sm" className="w-full" onClick={onCancel}>
               Cancel

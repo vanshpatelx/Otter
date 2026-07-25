@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { access, mkdir, rm } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { arch, platform } from "node:os";
@@ -158,6 +158,7 @@ export class VSCodeServer {
     const dataDir = join(this.baseDir, "data");
     const extDir = join(this.baseDir, "extensions");
     await mkdir(dataDir, { recursive: true });
+    await this.seedSettings(dataDir);
 
     this.proc = spawn(
       this.binary,
@@ -180,6 +181,33 @@ export class VSCodeServer {
       this.log(`VS Code server exited (${code})`);
       this.proc = null;
     });
+  }
+
+  /**
+   * Seed VS Code's user settings so it opens looking like part of Otter.
+   *
+   * Out of the box code-server comes up in a bright light theme and lands on a
+   * marketing Welcome tab — both jarring against a dark control centre. Written
+   * once and only if absent, so anything the user changes in the editor sticks.
+   */
+  private async seedSettings(dataDir: string): Promise<void> {
+    const settingsFile = join(dataDir, "User", "settings.json");
+    if (await exists(settingsFile)) return;
+    const settings = {
+      "workbench.colorTheme": "Default Dark Modern",
+      // Open straight to an empty editor, not the Welcome / product walkthrough.
+      "workbench.startupEditor": "none",
+      "workbench.tips.enabled": false,
+      "telemetry.telemetryLevel": "off",
+      // The window chrome is Otter's; VS Code's own title bar would be redundant.
+      "window.menuBarVisibility": "compact",
+    };
+    try {
+      await mkdir(join(dataDir, "User"), { recursive: true });
+      await writeFile(settingsFile, JSON.stringify(settings, null, 2), "utf8");
+    } catch {
+      // A missing theme only means it opens light — never worth failing over.
+    }
   }
 
   private async healthy(): Promise<boolean> {
