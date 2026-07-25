@@ -225,7 +225,9 @@ export function PreviewPanel({ url, preview, connected }: Props) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 bg-white">
+      {/* Dark until a page actually loads — a bare `bg-white` flashed a white
+          panel in the otherwise dark app whenever the frame was empty or slow. */}
+      <div className="min-h-0 flex-1 bg-background">
         {current?.kind === "metro" ? (
           <MetroPanel
             server={current}
@@ -240,12 +242,15 @@ export function PreviewPanel({ url, preview, connected }: Props) {
             key={frameSrc}
             src={frameSrc}
             title={`preview-${selected}`}
-            className="h-full w-full border-0"
+            // White behind the frame so a transparent page still reads as a
+            // normal site, not the dark app showing through.
+            className="h-full w-full border-0 bg-white"
             data-testid="preview-frame"
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
-            Start a dev server on this workstation, then rescan.
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Globe className="h-7 w-7 opacity-30" />
+            <span>Start a dev server on this workstation, then rescan.</span>
           </div>
         )}
       </div>
