@@ -261,18 +261,63 @@ export function App() {
   const [tab, setTab] = useState<"chat" | "terminal" | "code" | "preview">("chat");
   // The project sidebar collapses to an icon rail, VS Code style; remembered.
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem("aiw.sidebar") !== "closed");
+  // Panel width is draggable like VS Code's side bar, and remembered.
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = Number(localStorage.getItem("aiw.sidebarWidth"));
+    return Number.isFinite(saved) && saved >= 240 ? saved : 340;
+  });
+  const draggingSidebar = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem("aiw.sidebar", sidebarOpen ? "open" : "closed");
   }, [sidebarOpen]);
+  useEffect(() => {
+    localStorage.setItem("aiw.sidebarWidth", String(sidebarWidth));
+  }, [sidebarWidth]);
 
-  /** Open the panel and bring a section into view when a rail icon is clicked. */
+  // Listeners live on the window so a fast drag doesn't outrun the thin handle.
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (!draggingSidebar.current) return;
+      // The panel starts after the 52px rail; clamp to a sane range.
+      setSidebarWidth(Math.min(560, Math.max(240, e.clientX - 52)));
+    };
+    const up = () => {
+      draggingSidebar.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+  }, []);
+
+  const startSidebarDrag = () => {
+    draggingSidebar.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  /**
+   * Open the panel, scroll a section into view, and flash it.
+   *
+   * Without the flash a rail click did nothing visible whenever the section was
+   * already on screen, which read as "the icon is broken". The brief ring makes
+   * every click land.
+   */
   const revealSection = (section: string) => {
     setSidebarOpen(true);
-    requestAnimationFrame(() =>
-      document.getElementById(`side-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
-    );
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`side-${section}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.classList.add("rounded-lg", "ring-2", "ring-primary/50", "transition-all");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 900);
+    });
   };
 
   const api = useWorkers(targets);
@@ -431,7 +476,10 @@ export function App() {
           onAdd={() => setAdding(true)}
         />
         {sidebarOpen && (
-        <section className="flex w-[340px] shrink-0 flex-col gap-3 overflow-y-auto border-r p-3">
+        <section
+          style={{ width: sidebarWidth }}
+          className="flex shrink-0 flex-col gap-3 overflow-y-auto p-3"
+        >
           <div id="side-machines" className="flex flex-col gap-3">
           {targets.map((t) => (
             <MachinePanel
@@ -476,6 +524,8 @@ export function App() {
               key={`recent-${t.url}`}
               connected={workers[t.url]?.connection === "connected"}
               openPaths={(workers[t.url]?.workspaces ?? []).map((w) => w.path)}
+              // Label each machine's projects only when there's more than one to tell apart.
+              machineName={targets.length > 1 ? workers[t.url]?.machine?.hostname ?? t.url : undefined}
               onDiscover={() => api.discover.projects(t.url)}
               onOpenProject={async (path) => {
                 const ws = await openWorkspace(t.url, path);
@@ -518,6 +568,17 @@ export function App() {
             </div>
           )}
         </section>
+        )}
+
+        {sidebarOpen && (
+          <div
+            onMouseDown={startSidebarDrag}
+            onDoubleClick={() => setSidebarWidth(340)}
+            className="w-1 shrink-0 cursor-col-resize border-r bg-transparent transition-colors hover:bg-primary/40"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar (double-click to reset)"
+          />
         )}
 
         <div className="flex min-w-0 flex-1 flex-col p-4">

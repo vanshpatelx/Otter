@@ -4,6 +4,28 @@ import type { DiscoveredProject, DiscoveredSession } from "@ai-workspace/protoco
 import { Button } from "./ui/button.js";
 import { Badge } from "./ui/badge.js";
 
+/** A past conversation, resumable in one click. */
+function SessionRow({ session, onClick }: { session: DiscoveredSession; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="ml-4 flex w-[calc(100%-1rem)] items-start gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent/50"
+      title="Resume this conversation"
+    >
+      <MessageSquare className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400/70" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px]">
+          {session.title ?? session.firstPrompt ?? "Untitled conversation"}
+        </span>
+        <span className="block text-[10px] text-muted-foreground">
+          {session.messageCount}
+          {session.truncated ? "+" : ""} messages · {ago(session.updatedAt)}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function ago(ms: number): string {
   const mins = Math.floor((Date.now() - ms) / 60000);
   if (mins < 1) return "just now";
@@ -24,6 +46,7 @@ function ago(ms: number): string {
 export function RecentProjects({
   connected,
   openPaths,
+  machineName,
   onDiscover,
   onOpenProject,
   onResumeSession,
@@ -31,6 +54,8 @@ export function RecentProjects({
   connected: boolean;
   /** Paths already open, so they aren't offered twice. */
   openPaths: string[];
+  /** Which machine these belong to — shown only when more than one is paired. */
+  machineName?: string;
   onDiscover: () => Promise<DiscoveredProject[]>;
   onOpenProject: (path: string) => Promise<void>;
   onResumeSession: (path: string, session: DiscoveredSession) => Promise<void>;
@@ -80,6 +105,11 @@ export function RecentProjects({
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <History className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">Recent projects</span>
+        {machineName && (
+          <span className="max-w-[120px] truncate text-[10px] text-muted-foreground" title={machineName}>
+            · {machineName}
+          </span>
+        )}
         {unopened.length > 0 && (
           <Badge variant="secondary" className="ml-auto text-[10px]">
             {unopened.length}
@@ -100,64 +130,59 @@ export function RecentProjects({
 
       {unopened.length === 0 && !busy && !error ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">
-          No past projects found on this machine.
+          No past projects or sessions found on this machine.
         </p>
       ) : (
-        <div className="max-h-64 overflow-y-auto p-1.5">
-          {unopened.map((project) => (
-            <div key={project.path}>
-              <div className="flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-accent/50">
+        <div className="max-h-72 overflow-y-auto p-1.5">
+          {unopened.map((project) => {
+            // Newest conversation first, shown inline; the rest fold behind it.
+            const sessions = [...project.sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+            const [latest, ...rest] = sessions;
+            const isOpen = expanded === project.path;
+            return (
+              <div key={project.path} className="mb-0.5">
+                {/* The project itself — clicking the name opens a fresh session. */}
                 <button
-                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                  onClick={() => setExpanded(expanded === project.path ? null : project.path)}
-                  title={project.path}
+                  className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-accent/50"
+                  onClick={() => void onOpenProject(project.path)}
+                  title={`Open ${project.path} in a new session`}
                 >
-                  <ChevronRight
-                    className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
-                      expanded === project.path ? "rotate-90" : ""
-                    }`}
-                  />
+                  <FolderOpen className="h-3.5 w-3.5 shrink-0 text-sky-400" />
                   <span className="truncate text-xs font-medium">{project.name}</span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {project.sessions.length} · {ago(project.updatedAt)}
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                    {ago(project.updatedAt)}
                   </span>
                 </button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 shrink-0 px-1.5 text-[10px]"
-                  aria-label={`Open ${project.name}`}
-                  onClick={() => void onOpenProject(project.path)}
-                >
-                  <FolderOpen className="h-3 w-3" /> Open
-                </Button>
-              </div>
 
-              {expanded === project.path && (
-                <div className="ml-4 space-y-0.5 border-l pl-2">
-                  {project.sessions.map((session) => (
-                    <button
+                {/* Its conversations, resumable in one click — surfaced by default
+                    rather than hidden behind an expander, since reopening an old
+                    session is the whole reason they are listed. */}
+                {latest && (
+                  <SessionRow
+                    session={latest}
+                    onClick={() => void onResumeSession(project.path, latest)}
+                  />
+                )}
+                {isOpen &&
+                  rest.map((session) => (
+                    <SessionRow
                       key={session.sessionId}
+                      session={session}
                       onClick={() => void onResumeSession(project.path, session)}
-                      className="flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent/50"
-                      title="Open the project and continue this conversation"
-                    >
-                      <MessageSquare className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[11px]">
-                          {session.title ?? session.firstPrompt ?? "Untitled conversation"}
-                        </span>
-                        <span className="block text-[10px] text-muted-foreground">
-                          {session.messageCount}
-                          {session.truncated ? "+" : ""} messages · {ago(session.updatedAt)}
-                        </span>
-                      </span>
-                    </button>
+                    />
                   ))}
-                </div>
-              )}
-            </div>
-          ))}
+                {rest.length > 0 && (
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : project.path)}
+                    className="ml-6 flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                    {isOpen ? "fewer" : `${rest.length} more conversation${rest.length > 1 ? "s" : ""}`}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
