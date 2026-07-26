@@ -11,6 +11,8 @@ interface Props {
   terminalId: string;
   terminal: WorkersApi["terminal"];
   connected: boolean;
+  /** False when another tab covers this terminal — a hidden xterm can't fit. */
+  active?: boolean;
 }
 
 /**
@@ -18,10 +20,21 @@ interface Props {
  *
  * xterm owns its own DOM and buffer, so terminal bytes never pass through
  * React state — the socket writes straight into the emulator. React only
- * mounts/unmounts it and forwards resizes.
+ * mounts/unmounts it and forwards resizes. Several of these live at once behind
+ * the terminal tabs; the inactive ones are hidden rather than torn down, so
+ * their sessions and scrollback survive a tab switch.
  */
-export function TerminalPanel({ url, workspaceId, terminalId, terminal, connected }: Props) {
+export function TerminalPanel({
+  url,
+  workspaceId,
+  terminalId,
+  terminal,
+  connected,
+  active = true,
+}: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<XTerm | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
     if (!hostRef.current || !connected) return;
@@ -43,6 +56,8 @@ export function TerminalPanel({ url, workspaceId, terminalId, terminal, connecte
     term.loadAddon(fit);
     term.open(hostRef.current);
     fit.fit();
+    termRef.current = term;
+    fitRef.current = fit;
 
     // Worker -> terminal
     const unsubscribe = terminal.subscribe((id, data) => {
@@ -66,8 +81,23 @@ export function TerminalPanel({ url, workspaceId, terminalId, terminal, connecte
       unsubscribe();
       terminal.close(url, terminalId);
       term.dispose();
+      termRef.current = null;
+      fitRef.current = null;
     };
   }, [url, workspaceId, terminalId, terminal, connected]);
+
+  // A hidden terminal measures as zero, so re-fit and focus once it's on screen.
+  useEffect(() => {
+    if (!active || !termRef.current) return;
+    const raf = requestAnimationFrame(() => {
+      fitRef.current?.fit();
+      termRef.current?.focus();
+      if (termRef.current) {
+        terminal.resize(url, terminalId, termRef.current.cols, termRef.current.rows);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [active, url, terminalId, terminal]);
 
   if (!connected) {
     return (

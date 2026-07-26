@@ -31,10 +31,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card.j
 import { Badge } from "./components/ui/badge.js";
 import { Button } from "./components/ui/button.js";
 import { Input } from "./components/ui/input.js";
-import { TerminalPanel } from "./components/TerminalPanel.js";
+import { TerminalTabs } from "./components/TerminalTabs.js";
 import { PreviewPanel } from "./components/PreviewPanel.js";
 import { Logo } from "./components/Logo.js";
 import { NotificationCenter, type FeedItem } from "./components/NotificationCenter.js";
+import { ToastStack } from "./components/ToastStack.js";
+import { WorkStats } from "./components/WorkStats.js";
+import { ActivityLane } from "./components/ActivityLane.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
 import { UsageBar } from "./components/UsageBar.js";
@@ -392,6 +395,37 @@ export function App() {
     [workers],
   );
 
+  // Roll up everything the agents have done this session, across every machine.
+  const workStats = useMemo(() => {
+    const s = {
+      turns: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      tokensCached: 0,
+      costUsd: 0,
+      durationMs: 0,
+      tools: 0,
+      commands: 0,
+    };
+    for (const w of Object.values(workers)) {
+      for (const msgs of Object.values(w.messages)) {
+        for (const m of msgs) {
+          if (m.role === "tool") s.tools++;
+          if (m.usage) {
+            s.turns++;
+            s.tokensIn += m.usage.inputTokens + m.usage.cacheCreationTokens;
+            s.tokensOut += m.usage.outputTokens;
+            s.tokensCached += m.usage.cacheReadTokens;
+            s.costUsd += m.usage.costUsd;
+            s.durationMs += m.usage.durationMs;
+          }
+        }
+      }
+      for (const cmds of Object.values(w.commands)) s.commands += cmds.length;
+    }
+    return s;
+  }, [workers]);
+
   useEffect(() => {
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       void Notification.requestPermission().catch(() => {});
@@ -444,6 +478,7 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col">
+      <ToastStack approvals={allApprovals} notices={feed} onResolve={resolveApproval} />
       <header className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-[#071950]">
@@ -567,6 +602,10 @@ export function App() {
             />
             </div>
           )}
+
+          <div id="side-stats" className="mt-auto pt-1">
+            <WorkStats stats={workStats} />
+          </div>
         </section>
         )}
 
@@ -610,12 +649,11 @@ export function App() {
               Open a workspace to get started — type a project path on the left.
             </div>
           ) : tab === "terminal" ? (
-            <div className="min-h-0 flex-1 bg-[#0a0a0b] p-2">
-              <TerminalPanel
+            <div className="min-h-0 flex-1">
+              <TerminalTabs
                 key={`${active.worker.url}:${active.workspace.workspaceId}`}
                 url={active.worker.url}
                 workspaceId={active.workspace.workspaceId}
-                terminalId={`term-${active.workspace.workspaceId}`}
                 terminal={api.terminal}
                 connected={!!connected}
               />
@@ -762,6 +800,15 @@ export function App() {
         </Card>
         </div>
       </div>
+
+      <ActivityLane
+        events={feed}
+        working={isWorking}
+        activity={activityLabel}
+        stats={workStats}
+        connectedCount={Object.values(workers).filter((w) => w.connection === "connected").length}
+        totalCount={targets.length}
+      />
     </div>
   );
 }
