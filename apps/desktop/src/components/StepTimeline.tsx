@@ -78,9 +78,16 @@ export function StepTimeline({ tools, live }: { tools: ChatMessage[]; live: bool
     : `Worked through ${tools.length} ${tools.length === 1 ? "step" : "steps"}`;
 
   return (
-    <ChainOfThought className="my-1.5 space-y-2" open={open} onOpenChange={setOpen}>
-      <ChainOfThoughtHeader className="text-xs">{label}</ChainOfThoughtHeader>
-      <ChainOfThoughtContent className="ml-1">
+    // Boxed and recessed on purpose: tool activity is the agent's scratch work,
+    // not its answer, so it sits in a muted panel that visibly sinks behind the
+    // reply rather than competing with it for attention.
+    <ChainOfThought
+      className="my-1.5 rounded-lg border border-border/50 bg-muted/25 px-3 py-2"
+      open={open}
+      onOpenChange={setOpen}
+    >
+      <ChainOfThoughtHeader className="text-[11px]">{label}</ChainOfThoughtHeader>
+      <ChainOfThoughtContent className="ml-1 mt-2">
         {tools.map((tool, i) => {
           const name = tool.tool ?? "Tool";
           const { Icon } = TOOL_STYLES[name] ?? { Icon: Wrench };
