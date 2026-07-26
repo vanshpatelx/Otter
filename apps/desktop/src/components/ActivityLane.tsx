@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronUp, Circle, Terminal } from "lucide-react";
-import type { FeedItem } from "./NotificationCenter.js";
+import type { LogEvent } from "../lib/useWorkers.js";
 import type { WorkStatsData } from "./WorkStats.js";
 
 function clock(ms: number): string {
@@ -9,13 +9,18 @@ function clock(ms: number): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-const KIND_TAG: Record<string, { tag: string; color: string }> = {
-  "task-complete": { tag: "DONE", color: "text-emerald-400" },
-  "command-complete": { tag: "RUN ", color: "text-emerald-400" },
-  "command-failed": { tag: "FAIL", color: "text-red-400" },
-  "approval-waiting": { tag: "GATE", color: "text-amber-400" },
-  "agent-error": { tag: "ERR ", color: "text-red-400" },
-  info: { tag: "INFO", color: "text-sky-400" },
+const TAG_COLOR: Record<LogEvent["tag"], string> = {
+  TOOL: "text-violet-400",
+  RUN: "text-emerald-400",
+  FAIL: "text-red-400",
+  GATE: "text-amber-400",
+  DONE: "text-emerald-400",
+  DENY: "text-red-400",
+  LINK: "text-sky-400",
+  DROP: "text-amber-400",
+  CHAT: "text-cyan-400",
+  TERM: "text-cyan-400",
+  ERR: "text-red-400",
 };
 
 function compact(n: number): string {
@@ -40,7 +45,7 @@ export function ActivityLane({
   connectedCount,
   totalCount,
 }: {
-  events: FeedItem[];
+  events: LogEvent[];
   working: boolean;
   activity: string;
   stats: WorkStatsData;
@@ -66,20 +71,14 @@ export function ActivityLane({
           {ordered.length === 0 ? (
             <div className="text-muted-foreground/60">no activity yet — the log fills as the machines report in.</div>
           ) : (
-            ordered.map(({ notification, host }) => {
-              const meta = KIND_TAG[notification.kind] ?? KIND_TAG.info!;
-              return (
-                <div key={notification.id} className="flex gap-2 whitespace-nowrap leading-relaxed">
-                  <span className="text-muted-foreground/50">{clock(notification.at)}</span>
-                  <span className={meta.color}>{meta.tag}</span>
-                  <span className="truncate text-foreground/90">
-                    {notification.title}
-                    {notification.body ? <span className="text-muted-foreground"> — {notification.body}</span> : null}
-                  </span>
-                  <span className="ml-auto shrink-0 text-muted-foreground/40">{host}</span>
-                </div>
-              );
-            })
+            ordered.map((e) => (
+              <div key={e.id} className="flex gap-2 whitespace-nowrap leading-relaxed">
+                <span className="text-muted-foreground/50">{clock(e.at)}</span>
+                <span className={`w-9 shrink-0 ${TAG_COLOR[e.tag]}`}>{e.tag}</span>
+                <span className="truncate text-foreground/90">{e.text}</span>
+                <span className="ml-auto shrink-0 text-muted-foreground/40">{e.host}</span>
+              </div>
+            ))
           )}
         </div>
       )}

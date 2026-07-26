@@ -51,6 +51,38 @@ export interface VSCodeReady {
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "unauthorized";
 
+/** Tallies of work done — same shape for this session and all-time. */
+export interface SessionStats {
+  turns: number;
+  tokensIn: number;
+  tokensOut: number;
+  tokensCached: number;
+  costUsd: number;
+  durationMs: number;
+  tools: number;
+  commands: number;
+}
+
+const emptyStats = (): SessionStats => ({
+  turns: 0,
+  tokensIn: 0,
+  tokensOut: 0,
+  tokensCached: 0,
+  costUsd: 0,
+  durationMs: 0,
+  tools: 0,
+  commands: 0,
+});
+
+/** One line in the live activity firehose. */
+export interface LogEvent {
+  id: string;
+  at: number;
+  tag: "TOOL" | "RUN" | "FAIL" | "GATE" | "DONE" | "DENY" | "LINK" | "DROP" | "CHAT" | "TERM" | "ERR";
+  text: string;
+  host: string;
+}
+
 export interface ChatMessage {
   role: "user" | "agent" | "tool" | "reasoning";
   text: string;
@@ -105,6 +137,10 @@ export type TerminalListener = (terminalId: string, data: string) => void;
 
 export interface WorkersApi {
   workers: Record<string, WorkerState>;
+  /** Live activity firehose, newest first. */
+  events: LogEvent[];
+  /** All-time work tally, persisted across restarts. */
+  lifetime: SessionStats;
   send: (url: string, workspaceId: string, sessionId: string, text: string) => void;
   runCommand: (url: string, workspaceId: string, command: string) => void;
   resolveApproval: (url: string, requestId: string, approved: boolean) => void;
@@ -199,7 +235,62 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
   );
   /** Progress callbacks for VS Code startup, which streams before it resolves. */
   const vscodeProgress = useRef<Map<string, (p: VSCodeProgress) => void>>(new Map());
+  /** The live event firehose — everything the machines do, newest first. */
+  const [events, setEvents] = useState<LogEvent[]>([]);
+  const eventSeq = useRef(0);
+  /** url -> short host label, so events read "macbook" not "ws://127…". */
+  const hostLabels = useRef<Map<string, string>>(new Map());
   const key = targets.map((t) => `${t.url}|${t.token}`).join(",");
+
+  const hostOf = (url: string) => {
+    if (hostLabels.current.has(url)) return hostLabels.current.get(url)!;
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  };
+
+  const pushEvent = useCallback(
+    (url: string, tag: LogEvent["tag"], text: string) => {
+      setEvents((prev) =>
+        [
+          { id: `ev${++eventSeq.current}`, at: Date.now(), tag, text, host: hostOf(url) },
+          ...prev,
+        ].slice(0, 300),
+      );
+    },
+    // hostOf reads a ref, so it is stable enough to omit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // All-time totals, persisted. Bumped only on genuinely new events (a completed
+  // turn, a tool call, a command) — history rehydration never fires those, so
+  // reconnecting doesn't double-count.
+  const [lifetime, setLifetime] = useState<SessionStats>(() => {
+    try {
+      const raw = localStorage.getItem("aiw.lifetime");
+      if (raw) return { ...emptyStats(), ...(JSON.parse(raw) as Partial<SessionStats>) };
+    } catch {
+      // Corrupt store — start fresh.
+    }
+    return emptyStats();
+  });
+  const bumpLifetime = useCallback((delta: Partial<SessionStats>) => {
+    setLifetime((prev) => {
+      const next = { ...prev };
+      (Object.keys(delta) as (keyof SessionStats)[]).forEach((k) => {
+        next[k] = prev[k] + (delta[k] ?? 0);
+      });
+      try {
+        localStorage.setItem("aiw.lifetime", JSON.stringify(next));
+      } catch {
+        // Losing a tick of history is never worth throwing over.
+      }
+      return next;
+    });
+  }, []);
 
   const patch = useCallback((url: string, fn: (prev: WorkerState) => WorkerState) => {
     setWorkers((prev) => ({ ...prev, [url]: fn(prev[url] ?? emptyState(url)) }));
@@ -255,6 +346,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
             case "auth.result":
               if (msg.ok) {
                 patch(target.url, (s) => ({ ...s, connection: "connected" }));
+                pushEvent(target.url, "LINK", "connected");
                 socket.send(
                   JSON.stringify({ type: "subscribe", workerId: "local" } satisfies ClientMessage),
                 );
@@ -265,6 +357,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               }
               break;
             case "machine":
+              hostLabels.current.set(target.url, msg.machine.hostname);
               patch(target.url, (s) => ({ ...s, machine: msg.machine }));
               break;
             case "workspaces":
@@ -308,6 +401,12 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               }));
               break;
             case "chat.tool":
+              pushEvent(
+                target.url,
+                "TOOL",
+                `${msg.tool}${msg.target ? ` ${msg.target.split("/").pop()}` : ""}`,
+              );
+              bumpLifetime({ tools: 1 });
               patch(target.url, (s) => ({
                 ...s,
                 messages: {
@@ -331,6 +430,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               }));
               break;
             case "approval.request":
+              pushEvent(target.url, "GATE", msg.request.summary);
               patch(target.url, (s) => ({
                 ...s,
                 approvals: s.approvals.some((a) => a.id === msg.request.id)
@@ -339,12 +439,19 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               }));
               break;
             case "approval.resolved":
+              pushEvent(target.url, msg.approved ? "DONE" : "DENY", `approval ${msg.approved ? "approved" : "rejected"}`);
               patch(target.url, (s) => ({
                 ...s,
                 approvals: s.approvals.filter((a) => a.id !== msg.requestId),
               }));
               break;
             case "command.result":
+              pushEvent(
+                target.url,
+                msg.approved && (msg.code === 0 || msg.code === null) ? "RUN" : "FAIL",
+                `command exited ${msg.code ?? "?"}`,
+              );
+              bumpLifetime({ commands: 1 });
               patch(target.url, (s) => {
                 const commands: Record<string, CommandLine[]> = {};
                 for (const [wsId, lines] of Object.entries(s.commands)) {
@@ -470,7 +577,16 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               }));
               break;
             case "chat.usage":
-              // Lands on the agent turn currently being streamed.
+              // Lands on the agent turn currently being streamed. onUsage fires
+              // once per completed turn, so this is a safe place to tally.
+              bumpLifetime({
+                turns: 1,
+                tokensIn: msg.usage.inputTokens + msg.usage.cacheCreationTokens,
+                tokensOut: msg.usage.outputTokens,
+                tokensCached: msg.usage.cacheReadTokens,
+                costUsd: msg.usage.costUsd,
+                durationMs: msg.usage.durationMs,
+              });
               patch(target.url, (s) => ({
                 ...s,
                 messages: {
@@ -496,6 +612,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
           sockets.delete(target.url);
           if (unauthorized || disposed) return;
           patch(target.url, (s) => ({ ...s, connection: "disconnected" }));
+          pushEvent(target.url, "DROP", "connection lost — retrying");
           retries.push(setTimeout(open, 1000));
         };
         socket.onerror = () => socket.close();
@@ -532,8 +649,9 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
         },
       }));
       emit(url, { type: "chat.send", workspaceId, sessionId, text: trimmed });
+      pushEvent(url, "CHAT", trimmed.length > 48 ? `${trimmed.slice(0, 45)}…` : trimmed);
     },
-    [emit, patch],
+    [emit, patch, pushEvent],
   );
 
   const runCommand = useCallback(
@@ -731,6 +849,8 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
 
   return {
     workers,
+    events,
+    lifetime,
     send,
     runCommand,
     resolveApproval,

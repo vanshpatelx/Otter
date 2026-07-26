@@ -604,7 +604,7 @@ export function App() {
           )}
 
           <div id="side-stats" className="mt-auto pt-1">
-            <WorkStats stats={workStats} />
+            <WorkStats stats={workStats} lifetime={api.lifetime} />
           </div>
         </section>
         )}
@@ -802,7 +802,7 @@ export function App() {
       </div>
 
       <ActivityLane
-        events={feed}
+        events={api.events}
         working={isWorking}
         activity={activityLabel}
         stats={workStats}
