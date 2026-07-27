@@ -16,10 +16,12 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/node": "^20.16.0",
+    "husky": "^9.1.7",
     "typescript": "^5.6.0",
     "vitest": "^2.1.9"
   }

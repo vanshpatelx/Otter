@@ -1,0 +1,4 @@
+# Type errors are the real build breaker here (there's no separate lint), so
+# gate commits on a clean type-check across the workspace. Packages are built
+# first because the apps type-check against their dist output.
+pnpm build:packages >/dev/null 2>&1 && pnpm -r typecheck
