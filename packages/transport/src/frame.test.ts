@@ -43,6 +43,11 @@ describe("message classification", () => {
     "fs.read",
     "terminal.list",
     "audit.query",
+    "git.status",
+    "git.diff",
+    "git.stage",
+    "git.stageAll",
+    "git.commit",
     "preview.scan",
     "vscode.start",
     "preview.reload",
@@ -62,6 +67,9 @@ describe("message classification", () => {
     "terminal.output",
     "fs.listing",
     "audit.entries",
+    "git.status.result",
+    "git.diff.result",
+    "git.ok",
     "notification",
   ])("treats %s as a server message", (type) => {
     expect(isServerMessage({ type } as never)).toBe(true);

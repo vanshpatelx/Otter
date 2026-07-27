@@ -11,6 +11,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   PROTOCOL_VERSION,
   type AgentKind,
+  type ClientMessage,
   type MachineSummary,
   type NotificationKind,
   type TurnUsage,
@@ -32,6 +33,7 @@ import { ScheduledPrompts } from "./schedule.js";
 import { formatWait } from "./ratelimit.js";
 import { RelayLink } from "./relay-link.js";
 import { AuditLog } from "./audit.js";
+import { GitRepo } from "./git.js";
 import { configDir } from "./config.js";
 import { log } from "./log.js";
 import { ClaudeCodeAdapter } from "./adapters/claude-code.js";
@@ -300,6 +302,73 @@ export function startWorker(config: WorkerConfig): RunningWorker {
         resolve({ code, output });
       });
     });
+  }
+
+  /**
+   * Git review operations for a workspace: status, per-file diff, staging, and
+   * commit. Every one is confined to the workspace's own directory, and a
+   * commit is audited — it is the one git action that rewrites history.
+   */
+  async function handleGit(
+    conn: TransportConnection,
+    msg: Extract<ClientMessage, { type: `git.${string}` }>,
+  ): Promise<void> {
+    // Each request type has its own response shape, so an error must reply in
+    // that same shape — a git.ok can't resolve a status or diff request.
+    const failWith = (err: unknown) => {
+      const message = (err as Error).message;
+      if (msg.type === "git.status")
+        conn.send({
+          type: "git.status.result",
+          requestId: msg.requestId,
+          status: { isRepo: false, branch: null, ahead: 0, behind: 0, files: [], clean: true },
+        });
+      else if (msg.type === "git.diff")
+        conn.send({ type: "git.diff.result", requestId: msg.requestId, path: msg.path, staged: msg.staged, diff: "" });
+      else conn.send({ type: "git.ok", requestId: msg.requestId, ok: false, message });
+    };
+
+    let cwd: string;
+    try {
+      cwd = workspaces.pathOf(msg.workspaceId);
+    } catch (err) {
+      failWith(err);
+      return;
+    }
+    const repo = new GitRepo(cwd);
+    try {
+      switch (msg.type) {
+        case "git.status":
+          conn.send({ type: "git.status.result", requestId: msg.requestId, status: await repo.status() });
+          break;
+        case "git.diff":
+          conn.send({
+            type: "git.diff.result",
+            requestId: msg.requestId,
+            path: msg.path,
+            staged: msg.staged,
+            diff: await repo.diff(msg.path, msg.staged),
+          });
+          break;
+        case "git.stage":
+          if (msg.staged) await repo.stage(msg.path);
+          else await repo.unstage(msg.path);
+          conn.send({ type: "git.ok", requestId: msg.requestId, ok: true });
+          break;
+        case "git.stageAll":
+          await repo.stageAll();
+          conn.send({ type: "git.ok", requestId: msg.requestId, ok: true });
+          break;
+        case "git.commit": {
+          const summary = await repo.commit(msg.message);
+          audit.record("command", `git commit: ${msg.message}`, { workspaceId: msg.workspaceId, detail: summary });
+          conn.send({ type: "git.ok", requestId: msg.requestId, ok: true, message: summary });
+          break;
+        }
+      }
+    } catch (err) {
+      failWith(err);
+    }
   }
 
   async function handleCommand(
@@ -738,6 +807,13 @@ export function startWorker(config: WorkerConfig): RunningWorker {
               requestId: msg.requestId,
               entries: audit.query({ limit: msg.limit, kinds: msg.kinds, workspaceId: msg.workspaceId }),
             });
+            break;
+          case "git.status":
+          case "git.diff":
+          case "git.stage":
+          case "git.stageAll":
+          case "git.commit":
+            void handleGit(conn, msg);
             break;
           case "fs.list":
             // Each workspace has its own file service, so traversal protection

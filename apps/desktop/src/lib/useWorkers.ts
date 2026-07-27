@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   AuditKind,
   ClientMessage,
+  GitStatus,
   FileEntry,
   DiscoveredProject,
   MachineSummary,
@@ -194,6 +195,15 @@ export interface WorkersApi {
   audit: {
     /** The machine's durable event trail, newest first. */
     query: (url: string, opts?: { limit?: number; kinds?: AuditKind[]; workspaceId?: string }) => Promise<AuditEntry[]>;
+  };
+  git: {
+    status: (url: string, workspaceId: string) => Promise<GitStatus>;
+    diff: (url: string, workspaceId: string, path: string, staged: boolean) => Promise<string>;
+    /** Stage (staged=true) or unstage (staged=false) a path. */
+    stage: (url: string, workspaceId: string, path: string, staged: boolean) => Promise<void>;
+    stageAll: (url: string, workspaceId: string) => Promise<void>;
+    /** Commit staged changes; resolves to git's summary or rejects with its error. */
+    commit: (url: string, workspaceId: string, message: string) => Promise<string>;
   };
   discover: {
     /** Past agent conversations found on that machine. */
@@ -497,6 +507,27 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               const pending = fsPending.current.get(msg.requestId);
               fsPending.current.delete(msg.requestId);
               pending?.resolve(msg.entries);
+              break;
+            }
+            case "git.status.result": {
+              const pending = fsPending.current.get(msg.requestId);
+              fsPending.current.delete(msg.requestId);
+              pending?.resolve(msg.status);
+              break;
+            }
+            case "git.diff.result": {
+              const pending = fsPending.current.get(msg.requestId);
+              fsPending.current.delete(msg.requestId);
+              pending?.resolve(msg.diff);
+              break;
+            }
+            case "git.ok": {
+              const pending = fsPending.current.get(msg.requestId);
+              fsPending.current.delete(msg.requestId);
+              // stage/unstage resolve void; commit resolves its summary. A false
+              // ok (e.g. nothing staged, or a hook rejected it) rejects.
+              if (msg.ok) pending?.resolve(msg.message);
+              else pending?.reject(new Error(msg.message ?? "git operation failed"));
               break;
             }
             case "fs.listing": {
@@ -868,6 +899,22 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
     [request],
   );
 
+  const git = useMemo(
+    () => ({
+      status: (url: string, workspaceId: string) =>
+        request<GitStatus>(url, (requestId) => ({ type: "git.status", requestId, workspaceId })),
+      diff: (url: string, workspaceId: string, path: string, staged: boolean) =>
+        request<string>(url, (requestId) => ({ type: "git.diff", requestId, workspaceId, path, staged })),
+      stage: (url: string, workspaceId: string, path: string, staged: boolean) =>
+        request<void>(url, (requestId) => ({ type: "git.stage", requestId, workspaceId, path, staged })),
+      stageAll: (url: string, workspaceId: string) =>
+        request<void>(url, (requestId) => ({ type: "git.stageAll", requestId, workspaceId })),
+      commit: (url: string, workspaceId: string, message: string) =>
+        request<string>(url, (requestId) => ({ type: "git.commit", requestId, workspaceId, message })),
+    }),
+    [request],
+  );
+
   const discover = useMemo(
     () => ({
       projects: (url: string) =>
@@ -907,6 +954,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
     preview,
     vscode,
     audit,
+    git,
     discover,
   };
 }

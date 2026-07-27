@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { WebSocket } from "ws";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
@@ -242,6 +243,85 @@ describe("commands", () => {
     c.send({ type: "approval.resolve", requestId: request.request.id, approved: false });
     const result = await c.waitFor("command.result", 6000);
     expect(result.approved).toBe(false);
+    c.close();
+  });
+});
+
+describe("git review over the wire", () => {
+  let repoDir: string;
+  let repoWsId: string;
+
+  beforeAll(async () => {
+    // A real git repo with one commit, opened as a workspace.
+    repoDir = mkdtempSync(join(tmpdir(), "aiw-int-git-"));
+    const git = (...args: string[]) => execFileSync("git", ["-C", repoDir, ...args], { stdio: "pipe" });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@otter.dev");
+    git("config", "user.name", "Otter Test");
+    git("config", "commit.gpgsign", "false");
+    writeFileSync(join(repoDir, "app.txt"), "line one\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "initial");
+
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+    c.send({ type: "workspace.open", requestId: "git-open", path: repoDir });
+    repoWsId = (await c.waitFor("workspace.opened")).workspace.workspaceId;
+    c.close();
+  });
+
+  afterAll(() => rmSync(repoDir, { recursive: true, force: true }));
+
+  it("reports status, diffs, stages, and commits — end to end", async () => {
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+
+    // Modify a tracked file on disk, then ask for status.
+    writeFileSync(join(repoDir, "app.txt"), "line one changed\n");
+    c.send({ type: "git.status", requestId: "g1", workspaceId: repoWsId });
+    const s1 = await c.waitFor("git.status.result");
+    expect(s1.status.isRepo).toBe(true);
+    expect(s1.status.branch).toBe("main");
+    const changed = s1.status.files.find((f) => f.path === "app.txt");
+    expect(changed?.status).toBe("modified");
+    expect(changed?.unstaged).toBe(true);
+
+    // Diff shows the edit.
+    c.send({ type: "git.diff", requestId: "g2", workspaceId: repoWsId, path: "app.txt", staged: false });
+    const d = await c.waitFor("git.diff.result");
+    expect(d.diff).toContain("+line one changed");
+
+    // Stage it, then commit.
+    c.send({ type: "git.stage", requestId: "g3", workspaceId: repoWsId, path: "app.txt", staged: true });
+    const ok1 = await c.waitFor("git.ok");
+    expect(ok1.ok).toBe(true);
+
+    c.send({ type: "git.commit", requestId: "g4", workspaceId: repoWsId, message: "change line one" });
+    const ok2 = await c.waitFor("git.ok");
+    expect(ok2.ok).toBe(true);
+    c.close();
+
+    // Back to clean — checked on a fresh client so no earlier (dirty)
+    // git.status.result lingers in the buffer (waitFor matches by type).
+    const c2 = client(CODE);
+    await c2.ready;
+    await c2.waitFor("auth.result");
+    c2.send({ type: "git.status", requestId: "g5", workspaceId: repoWsId });
+    const s5 = await c2.waitFor("git.status.result");
+    expect(s5.status.files).toEqual([]);
+    expect(s5.status.clean).toBe(true);
+    c2.close();
+  });
+
+  it("rejects a path escaping the workspace", async () => {
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+    c.send({ type: "git.diff", requestId: "gx", workspaceId: repoWsId, path: "../../../etc/passwd", staged: false });
+    // A rejected diff comes back empty rather than leaking anything.
+    expect((await c.waitFor("git.diff.result")).diff).toBe("");
     c.close();
   });
 });
