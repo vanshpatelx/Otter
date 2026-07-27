@@ -37,6 +37,8 @@ import { GitRepo } from "./git.js";
 import { configDir } from "./config.js";
 import { log } from "./log.js";
 import { ClaudeCodeAdapter } from "./adapters/claude-code.js";
+import { codexAdapter } from "./adapters/codex-cli.js";
+import { geminiAdapter } from "./adapters/gemini-cli.js";
 import type { AgentAdapter } from "./adapters/types.js";
 
 /**
@@ -73,7 +75,13 @@ function buildAdapters(config: WorkerConfig): Map<AgentKind, AgentAdapter> {
   if (config.agents.includes("claude-code")) {
     adapters.set("claude-code", new ClaudeCodeAdapter());
   }
-  // Codex / Gemini / OpenHands / Roo adapters register here as they land.
+  if (config.agents.includes("codex-cli")) {
+    adapters.set("codex-cli", codexAdapter());
+  }
+  if (config.agents.includes("gemini-cli")) {
+    adapters.set("gemini-cli", geminiAdapter());
+  }
+  // OpenHands / Roo adapters register here as they land.
   return adapters;
 }
 
