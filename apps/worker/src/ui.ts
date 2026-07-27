@@ -27,7 +27,7 @@ export function uiDir(): string {
 }
 
 /**
- * Serves the built Desktop UI over loopback so `aiw ui` gives a working app
+ * Serves the built Desktop UI over loopback so `otter ui` gives a working app
  * without a dev server. Single-page app: unknown paths fall back to index.html.
  */
 export function serveUi(port: number): void {
@@ -50,6 +50,6 @@ export function serveUi(port: number): void {
 
   server.listen(port, "127.0.0.1", () => {
     console.log(`ai-workspace UI  ->  http://127.0.0.1:${port}`);
-    console.log("(pair using the code from `aiw worker status`)");
+    console.log("(pair using the code from `otter worker status`)");
   });
 }

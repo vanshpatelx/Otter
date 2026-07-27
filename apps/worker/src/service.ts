@@ -9,14 +9,29 @@ import { configDir } from "./config.js";
 
 const run = promisify(execFile);
 
-export const SERVICE_LABEL = "dev.aiworkspace.worker";
+export const SERVICE_LABEL = "dev.otter.worker";
+/** The label used before the rename to Otter — retired on (un)install. */
+const LEGACY_SERVICE_LABEL = "dev.aiworkspace.worker";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The CLI entry to run as a service — dist/cli.js when installed. */
 const CLI_ENTRY = join(HERE, "cli.js");
 
+function plistPathFor(label: string): string {
+  return join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
+}
+
 function plistPath(): string {
-  return join(homedir(), "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
+  return plistPathFor(SERVICE_LABEL);
+}
+
+/** Stop and delete any service left behind under the pre-rename label. */
+async function retireLegacyService(): Promise<void> {
+  await run("launchctl", ["bootout", `gui/${process.getuid?.() ?? 501}/${LEGACY_SERVICE_LABEL}`]).catch(
+    () => {},
+  );
+  const legacy = plistPathFor(LEGACY_SERVICE_LABEL);
+  if (existsSync(legacy)) rmSync(legacy);
 }
 
 function logDir(): string {
@@ -73,7 +88,7 @@ ${args.map((a) => `    <string>${escapeXml(a)}</string>`).join("\n")}
 function assertMac(): void {
   if (platform() !== "darwin") {
     throw new Error(
-      `\`aiw service\` currently supports macOS (launchd) only — detected ${platform()}.\n` +
+      `\`otter service\` currently supports macOS (launchd) only — detected ${platform()}.\n` +
         "On Linux, run the Worker under a systemd user unit or your process manager of choice.",
     );
   }
@@ -92,8 +107,10 @@ export async function installService(cwd: string): Promise<string> {
   mkdirSync(dirname(plistPath()), { recursive: true });
   writeFileSync(plistPath(), buildPlist(process.execPath, cwd), "utf8");
 
-  // Replace any previous instance so re-installing is idempotent.
+  // Replace any previous instance so re-installing is idempotent, and retire a
+  // service left over from the old `aiw` label so there aren't two.
   await bootout().catch(() => {});
+  await retireLegacyService();
   await run("launchctl", ["bootstrap", `gui/${process.getuid?.() ?? 501}`, plistPath()]);
   return plistPath();
 }
@@ -102,6 +119,7 @@ export async function installService(cwd: string): Promise<string> {
 export async function uninstallService(): Promise<void> {
   assertMac();
   await bootout().catch(() => {});
+  await retireLegacyService();
   if (existsSync(plistPath())) rmSync(plistPath());
 }
 

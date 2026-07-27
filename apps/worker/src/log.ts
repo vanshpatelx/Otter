@@ -6,7 +6,7 @@
  * carries meaning: amber always means "this is waiting on you".
  *
  * Colour is disabled when stdout is not a TTY (or NO_COLOR is set) so log
- * files and `aiw service` output stay clean instead of full of escape codes.
+ * files and `otter service` output stay clean instead of full of escape codes.
  */
 
 const useColor =
@@ -59,7 +59,7 @@ export const log = {
   }): void {
     const rule = c.dim("─".repeat(52));
     console.log("");
-    console.log(`  ${c.green("◆")} ${c.bold("ai workspace")} ${c.dim(`worker · protocol v${info.version}`)}`);
+    console.log(`  ${c.green("◆")} ${c.bold("otter")} ${c.dim(`worker · protocol v${info.version}`)}`);
     console.log(`  ${rule}`);
     console.log(`  ${c.grey("machine ")} ${info.workerId}   ${c.grey("agents")} ${info.agents}`);
     console.log(`  ${c.grey("listening")} ${c.cyan(info.url)}`);

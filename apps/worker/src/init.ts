@@ -45,7 +45,7 @@ async function runInitNonInteractive(opts: InitOptions): Promise<void> {
 }
 
 /**
- * Interactive `aiw worker init` — the onboarding wizard run once per machine.
+ * Interactive `otter worker init` — the onboarding wizard run once per machine.
  * Writes ~/.ai-workspace/worker.json. This is where transport, keep-awake, and
  * agent selection are decided, and where a pairing code is minted.
  */
@@ -64,7 +64,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
         false,
       );
       if (!overwrite) {
-        console.log("Keeping existing config. Run `aiw worker start` to launch.");
+        console.log("Keeping existing config. Run `otter worker start` to launch.");
         return;
       }
     }
@@ -130,7 +130,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     console.log(`  Keep awake:   ${config.keepAwake}`);
     console.log(`  Agents:       ${config.agents.join(", ") || "none"}`);
     console.log(`\n  Pairing code for the Desktop app:  ${config.pairingCode}\n`);
-    console.log("  Next:  aiw worker start\n");
+    console.log("  Next:  otter worker start\n");
   } finally {
     prompt.close();
   }

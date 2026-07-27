@@ -31,19 +31,19 @@ curl -fsSL https://raw.githubusercontent.com/vanshpatelx/Otter/main/install.sh |
 Then:
 
 ```bash
-aiw worker init      # configure this machine (transport, keep-awake, agents)
-aiw worker start     # run the Worker
-aiw ui               # serve the Desktop UI at http://127.0.0.1:5180
+otter worker init      # configure this machine (transport, keep-awake, agents)
+otter worker start     # run the Worker
+otter ui               # serve the Desktop UI at http://127.0.0.1:5180
 ```
 
-Pair the UI with the code from `aiw worker status`. Requires Node 20+ and git.
+Pair the UI with the code from `otter worker status`. Requires Node 20+ and git.
 
 To keep the Worker running across logins and reboots (macOS):
 
 ```bash
-aiw service install     # starts at login, restarts if it exits
-aiw service status
-aiw service uninstall
+otter service install     # starts at login, restarts if it exits
+otter service status
+otter service uninstall
 ```
 
 ### Desktop app
@@ -111,7 +111,7 @@ having the whole editor rather than a text box.
 
 `apps/mobile` is an Expo React Native app — Otter on a phone. It speaks the same
 wire protocol as the desktop over WebSocket, so it pairs with a workstation the
-same way (its address plus the code from `aiw worker status`) and gives you the
+same way (its address plus the code from `otter worker status`) and gives you the
 things that matter away from the desk: **approve or reject agent actions**, chat
 with an agent, and watch the activity feed. Approvals are the point — a gate can
 be cleared from your pocket.

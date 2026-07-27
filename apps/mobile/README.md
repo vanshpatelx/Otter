@@ -22,7 +22,7 @@ pnpm export:web     # static web build via Metro
 
 Open the dev server in **Expo Go** on a device, or press `w` for the web build.
 Pair with a running Worker: its `ws://…` address and the code from
-`aiw worker status`.
+`otter worker status`.
 
 ## Notes
 
