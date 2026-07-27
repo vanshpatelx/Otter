@@ -686,16 +686,22 @@ export function startWorker(config: WorkerConfig): RunningWorker {
             break;
           }
           case "terminal.start": {
-            let cwd: string;
-            try {
-              cwd = workspaces.pathOf(msg.workspaceId);
-            } catch (e) {
-              conn.send({ type: "terminal.exit", terminalId: msg.terminalId, code: null });
-              break;
-            }
             // The UI re-sends start on remount, so only report a real spawn —
             // otherwise the log fills with "started" for one terminal.
             const existed = terminals.has(msg.terminalId);
+            // A fresh terminal needs a workspace to spawn its shell in; a
+            // reattach does not — the PTY already has its cwd, so the
+            // machine-wide terminals view can attach to a terminal whose
+            // workspace isn't even open in this Desktop.
+            let cwd = "";
+            if (!existed) {
+              try {
+                cwd = workspaces.pathOf(msg.workspaceId);
+              } catch (e) {
+                conn.send({ type: "terminal.exit", terminalId: msg.terminalId, code: null });
+                break;
+              }
+            }
             const err = terminals.start(msg.terminalId, cwd, msg.cols, msg.rows);
             if (err) {
               log.error(err);
