@@ -13,6 +13,7 @@
     "electron:dev": "electron .",
     "dist:mac": "electron-builder --mac dmg",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf dist release *.tsbuildinfo"
   },
   "build": {

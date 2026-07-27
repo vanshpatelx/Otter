@@ -75,12 +75,22 @@ export function TerminalPanel({
     };
     window.addEventListener("resize", onResize);
 
+    // Refit whenever the container itself changes size — not just the window.
+    // This is what makes terminal splits, sidebar toggles, and tab layout
+    // changes reflow correctly: a pane going from full-width to half-width
+    // never fires a window resize, but its box does change.
+    const ro = new ResizeObserver(() => {
+      if (hostRef.current && hostRef.current.clientWidth > 0) onResize();
+    });
+    ro.observe(hostRef.current);
+
     return () => {
       // Detach only — tear down the local view but leave the PTY running on the
       // Worker, so a dev server or build survives a tab switch, a workspace
       // change, or the app closing, and can be reattached later. Killing is an
       // explicit action (the tab's ✕), not a side effect of unmounting.
       window.removeEventListener("resize", onResize);
+      ro.disconnect();
       onData.dispose();
       unsubscribe();
       term.dispose();
