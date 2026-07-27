@@ -76,10 +76,13 @@ export function TerminalPanel({
     window.addEventListener("resize", onResize);
 
     return () => {
+      // Detach only — tear down the local view but leave the PTY running on the
+      // Worker, so a dev server or build survives a tab switch, a workspace
+      // change, or the app closing, and can be reattached later. Killing is an
+      // explicit action (the tab's ✕), not a side effect of unmounting.
       window.removeEventListener("resize", onResize);
       onData.dispose();
       unsubscribe();
-      terminal.close(url, terminalId);
       term.dispose();
       termRef.current = null;
       fitRef.current = null;

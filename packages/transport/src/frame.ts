@@ -35,6 +35,7 @@ export function isClientMessage(msg: WireMessage): msg is ClientMessage {
     case "fs.list":
     case "fs.read":
     case "fs.write":
+    case "terminal.list":
     case "preview.scan":
     case "vscode.start":
     case "preview.reload":

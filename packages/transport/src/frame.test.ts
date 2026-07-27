@@ -41,6 +41,7 @@ describe("message classification", () => {
     "terminal.close",
     "fs.list",
     "fs.read",
+    "terminal.list",
     "preview.scan",
     "vscode.start",
     "preview.reload",

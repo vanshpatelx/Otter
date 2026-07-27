@@ -1,45 +1,95 @@
-import { useRef, useState } from "react";
-import { TerminalSquare, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { TerminalSquare, Plus, X, Loader2 } from "lucide-react";
 import type { WorkersApi } from "../lib/useWorkers.js";
 import { TerminalPanel } from "./TerminalPanel.js";
 
 /**
- * Several terminals behind tabs, VS Code style.
+ * Several terminals behind tabs, VS Code style — and they outlive the tab.
  *
- * One shell was rarely enough — you run a dev server in one and poke around in
- * another. Each tab is a real PTY on the workstation; switching hides rather
- * than kills, so a long-running process keeps going in the background and its
- * scrollback is still there when you come back.
+ * Terminals run on the Worker, not in this window, so a dev server or a build
+ * keeps going when the tab closes, the workspace changes, or the app quits.
+ * Opening this view lists what is already running in the project's directory and
+ * reattaches to it — scrollback and all — rather than starting from scratch.
+ * Switching a tab hides it; only the ✕ actually kills the process.
  */
 export function TerminalTabs({
   url,
   workspaceId,
+  workspacePath,
   terminal,
   connected,
 }: {
   url: string;
   workspaceId: string;
+  /** The project directory — how running terminals are matched to this project. */
+  workspacePath: string;
   terminal: WorkersApi["terminal"];
   connected: boolean;
 }) {
-  const counter = useRef(1);
-  const [ids, setIds] = useState<string[]>([`term-${workspaceId}-1`]);
-  const [activeId, setActiveId] = useState(`term-${workspaceId}-1`);
+  const counter = useRef(0);
+  const [ids, setIds] = useState<string[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+
+  const freshId = () => {
+    counter.current += 1;
+    return `term-${workspaceId}-${counter.current}`;
+  };
+
+  // On open, reattach to whatever is already running in this project's
+  // directory; if nothing is, start one fresh.
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    const openFresh = () => {
+      counter.current = 0;
+      const id = freshId();
+      setIds([id]);
+      setActiveId(id);
+      setReady(true);
+    };
+    terminal
+      .list(url)
+      .then((sessions) => {
+        if (cancelled) return;
+        const mine = sessions.filter((s) => s.cwd === workspacePath).map((s) => s.id);
+        if (mine.length === 0) {
+          openFresh();
+          return;
+        }
+        // Seed the counter past any id we minted for this workspace before.
+        const prefix = `term-${workspaceId}-`;
+        for (const id of mine) {
+          if (id.startsWith(prefix)) {
+            const n = Number(id.slice(prefix.length));
+            if (Number.isFinite(n)) counter.current = Math.max(counter.current, n);
+          }
+        }
+        setIds(mine);
+        setActiveId(mine[0]!);
+        setReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) openFresh();
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, workspaceId, workspacePath, connected]);
 
   const add = () => {
-    counter.current += 1;
-    const id = `term-${workspaceId}-${counter.current}`;
+    const id = freshId();
     setIds((prev) => [...prev, id]);
     setActiveId(id);
   };
 
-  const close = (id: string) => {
+  const kill = (id: string) => {
+    terminal.kill(url, id);
     setIds((prev) => {
       const next = prev.filter((x) => x !== id);
       if (next.length === 0) {
-        // Never leave the panel empty — closing the last one opens a fresh shell.
-        counter.current += 1;
-        const fresh = `term-${workspaceId}-${counter.current}`;
+        const fresh = freshId();
         setActiveId(fresh);
         return [fresh];
       }
@@ -47,6 +97,21 @@ export function TerminalTabs({
       return next;
     });
   };
+
+  if (!connected) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Connect to a workstation to open a terminal.
+      </div>
+    );
+  }
+  if (!ready) {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> attaching to running terminals…
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -64,10 +129,11 @@ export function TerminalTabs({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                close(id);
+                kill(id);
               }}
               className="opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
-              aria-label={`Close shell ${i + 1}`}
+              title="Kill this terminal"
+              aria-label={`Kill shell ${i + 1}`}
             >
               <X className="h-3 w-3" />
             </button>
@@ -81,6 +147,9 @@ export function TerminalTabs({
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
+        <span className="ml-auto shrink-0 pr-1 text-[10px] text-muted-foreground/60">
+          runs on the workstation · survives closing
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 bg-[#0a0a0b] p-2">

@@ -654,6 +654,7 @@ export function App() {
                 key={`${active.worker.url}:${active.workspace.workspaceId}`}
                 url={active.worker.url}
                 workspaceId={active.workspace.workspaceId}
+                workspacePath={active.workspace.path}
                 terminal={api.terminal}
                 connected={!!connected}
               />
