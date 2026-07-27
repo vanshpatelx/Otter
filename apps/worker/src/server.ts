@@ -34,6 +34,7 @@ import { formatWait } from "./ratelimit.js";
 import { RelayLink } from "./relay-link.js";
 import { AuditLog } from "./audit.js";
 import { GitRepo } from "./git.js";
+import { PushRegistry, sendExpoPush } from "./push.js";
 import { configDir } from "./config.js";
 import { log } from "./log.js";
 import { ClaudeCodeAdapter } from "./adapters/claude-code.js";
@@ -92,6 +93,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
   const sessions = new SessionStore();
   const approvals = new ApprovalManager();
   const audit = new AuditLog(configDir());
+  const pushRegistry = new PushRegistry();
   const adapters = buildAdapters(config);
   const defaultAgent: AgentKind | null = config.agents[0] ?? null;
 
@@ -152,6 +154,18 @@ export function startWorker(config: WorkerConfig): RunningWorker {
     };
     if (body) notification.body = body.slice(0, 400);
     server.broadcast({ type: "notification", notification });
+
+    // An approval is the one thing worth waking a backgrounded phone for. Push
+    // it to every registered device via Expo; dead tokens are pruned.
+    if (kind === "approval-waiting" && pushRegistry.size > 0) {
+      void sendExpoPush(pushRegistry.tokens(), {
+        title,
+        body: body ?? "Tap to review.",
+        data: { kind, notificationId: notification.id },
+      }).then(({ invalidTokens }) => {
+        for (const dead of invalidTokens) pushRegistry.unregister(dead);
+      });
+    }
   }
 
   const terminals = new TerminalManager({
@@ -815,6 +829,16 @@ export function startWorker(config: WorkerConfig): RunningWorker {
               requestId: msg.requestId,
               entries: audit.query({ limit: msg.limit, kinds: msg.kinds, workspaceId: msg.workspaceId }),
             });
+            break;
+          case "push.register":
+            if (pushRegistry.register(msg.token)) {
+              log.info(`push token registered (${pushRegistry.size} device${pushRegistry.size === 1 ? "" : "s"})`);
+            } else {
+              log.warn("ignored an invalid push token");
+            }
+            break;
+          case "push.unregister":
+            pushRegistry.unregister(msg.token);
             break;
           case "git.status":
           case "git.diff":

@@ -4,7 +4,11 @@ import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { Logo } from "./src/components/Logo";
 import { colors, radius, space } from "./src/theme";
 import { useWorker, type WorkerTarget } from "./src/lib/useWorker";
+import { configureForegroundNotifications } from "./src/lib/push";
 import { loadTarget, saveTarget, clearTarget } from "./src/lib/storage";
+
+// Show approval notifications even while the app is in the foreground.
+configureForegroundNotifications();
 import { PairScreen } from "./src/screens/PairScreen";
 import { ChatScreen } from "./src/screens/ChatScreen";
 import { ApprovalsScreen } from "./src/screens/ApprovalsScreen";

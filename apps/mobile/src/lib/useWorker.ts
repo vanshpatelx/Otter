@@ -8,6 +8,7 @@ import type {
   WorkerNotification,
   Workspace,
 } from "@ai-workspace/protocol";
+import { getExpoPushToken } from "./push";
 
 export type ConnStatus = "connecting" | "connected" | "disconnected" | "unauthorized";
 
@@ -116,6 +117,13 @@ export function useWorker(target: WorkerTarget | null): WorkerConn {
             if (msg.ok) {
               setStatus("connected");
               sock.send(JSON.stringify({ type: "subscribe", workerId: "local" } satisfies ClientMessage));
+              // Hand the Worker our push token so approvals can buzz this phone
+              // even when the app is backgrounded. No-ops on web/simulator.
+              void getExpoPushToken().then((token) => {
+                if (token && sock.readyState === WebSocket.OPEN) {
+                  sock.send(JSON.stringify({ type: "push.register", token } satisfies ClientMessage));
+                }
+              });
             } else {
               unauthorized = true;
               setStatus("unauthorized");

@@ -293,6 +293,9 @@ export type ClientMessage =
   | { type: "terminal.list"; requestId: string }
   /** Ask for the durable audit trail, newest first. */
   | { type: "audit.query"; requestId: string; limit?: number; kinds?: AuditKind[]; workspaceId?: string }
+  /** A phone registers its Expo push token so approvals can buzz it. */
+  | { type: "push.register"; token: string }
+  | { type: "push.unregister"; token: string }
   /** Git working-tree status for a workspace. */
   | { type: "git.status"; requestId: string; workspaceId: string }
   /** Unified diff for one file, staged or unstaged. */
