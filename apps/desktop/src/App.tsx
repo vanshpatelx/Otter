@@ -41,6 +41,7 @@ import { WorkStats } from "./components/WorkStats.js";
 import { ActivityLane } from "./components/ActivityLane.js";
 import { CommandPalette, type PaletteItem } from "./components/CommandPalette.js";
 import { AuditPanel } from "./components/AuditPanel.js";
+import { RunningTerminals } from "./components/RunningTerminals.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
 import { UsageBar } from "./components/UsageBar.js";
@@ -312,6 +313,8 @@ export function App() {
   const [paletteSessions, setPaletteSessions] = useState<PaletteItem[]>([]);
   /** Worker url whose audit log is open, or null. */
   const [auditFor, setAuditFor] = useState<string | null>(null);
+  /** Worker url whose machine-wide terminals view is open, or null. */
+  const [terminalsFor, setTerminalsFor] = useState<string | null>(null);
 
   // ⌘K / Ctrl+K anywhere opens the command palette.
   useEffect(() => {
@@ -542,6 +545,14 @@ export function App() {
           icon: History,
           run: () => setAuditFor(t.url),
         });
+        items.push({
+          id: `terms-${t.url}`,
+          group: "Machines",
+          label: `Running terminals — ${host}`,
+          hint: "attach to any live shell",
+          icon: Terminal,
+          run: () => setTerminalsFor(t.url),
+        });
       }
     }
     items.push(...paletteSessions);
@@ -598,6 +609,14 @@ export function App() {
         onClose={() => setAuditFor(null)}
         hostname={auditFor ? (workers[auditFor]?.machine?.hostname ?? auditFor) : ""}
         fetchAudit={(opts) => (auditFor ? api.audit.query(auditFor, opts) : Promise.resolve([]))}
+      />
+      <RunningTerminals
+        open={terminalsFor !== null}
+        onClose={() => setTerminalsFor(null)}
+        url={terminalsFor ?? ""}
+        hostname={terminalsFor ? (workers[terminalsFor]?.machine?.hostname ?? terminalsFor) : ""}
+        terminal={api.terminal}
+        connected={terminalsFor ? workers[terminalsFor]?.connection === "connected" : false}
       />
       <header className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-2">
