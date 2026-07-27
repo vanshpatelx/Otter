@@ -40,6 +40,7 @@ import { ToastStack } from "./components/ToastStack.js";
 import { WorkStats } from "./components/WorkStats.js";
 import { ActivityLane } from "./components/ActivityLane.js";
 import { CommandPalette, type PaletteItem } from "./components/CommandPalette.js";
+import { AuditPanel } from "./components/AuditPanel.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
 import { UsageBar } from "./components/UsageBar.js";
@@ -309,6 +310,8 @@ export function App() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteSessions, setPaletteSessions] = useState<PaletteItem[]>([]);
+  /** Worker url whose audit log is open, or null. */
+  const [auditFor, setAuditFor] = useState<string | null>(null);
 
   // ⌘K / Ctrl+K anywhere opens the command palette.
   useEffect(() => {
@@ -518,10 +521,11 @@ export function App() {
       }
     }
     for (const t of targets) {
+      const host = workers[t.url]?.machine?.hostname ?? t.url;
       items.push({
         id: `machine-${t.url}`,
         group: "Machines",
-        label: workers[t.url]?.machine?.hostname ?? t.url,
+        label: host,
         hint: workers[t.url]?.connection,
         icon: Server,
         run: () => {
@@ -529,6 +533,16 @@ export function App() {
           if (first) jumpTo(t.url, first.workspaceId);
         },
       });
+      if (workers[t.url]?.connection === "connected") {
+        items.push({
+          id: `audit-${t.url}`,
+          group: "Machines",
+          label: `Audit log — ${host}`,
+          hint: "durable event trail",
+          icon: History,
+          run: () => setAuditFor(t.url),
+        });
+      }
     }
     items.push(...paletteSessions);
     items.push({ id: "act-add", group: "Actions", label: "Add machine", icon: Plus, run: () => setAdding(true) });
@@ -579,6 +593,12 @@ export function App() {
     <div className="flex h-screen flex-col">
       <ToastStack approvals={allApprovals} notices={feed} onResolve={resolveApproval} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} />
+      <AuditPanel
+        open={auditFor !== null}
+        onClose={() => setAuditFor(null)}
+        hostname={auditFor ? (workers[auditFor]?.machine?.hostname ?? auditFor) : ""}
+        fetchAudit={(opts) => (auditFor ? api.audit.query(auditFor, opts) : Promise.resolve([]))}
+      />
       <header className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-[#071950]">

@@ -246,6 +246,47 @@ describe("commands", () => {
   });
 });
 
+describe("audit trail over the wire", () => {
+  it("records real events to disk and serves them back, newest first", async () => {
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+
+    // Drive a couple of auditable actions through the live socket.
+    c.send({ type: "workspace.open", requestId: "au-open", path: projectA });
+    const ws = await c.waitFor("workspace.opened");
+    c.send({ type: "session.create", requestId: "au-sess", workspaceId: ws.workspace.workspaceId });
+    await c.waitFor("session.created");
+
+    c.send({ type: "audit.query", requestId: "au-q", limit: 50 });
+    const res = await c.waitFor("audit.entries");
+    const kinds = res.entries.map((e) => e.kind);
+
+    // The events we just triggered are all present.
+    expect(kinds).toContain("client-authed");
+    expect(kinds).toContain("workspace-opened");
+    expect(kinds).toContain("session-created");
+    // Newest first: the session we just made outranks the auth from before it.
+    expect(kinds.indexOf("session-created")).toBeLessThan(kinds.indexOf("client-authed"));
+
+    // And it is durable — the JSONL file exists on disk under AIW_HOME.
+    const day = new Date().toISOString().slice(0, 10);
+    expect(existsSync(join(home, "audit", `${day}.jsonl`))).toBe(true);
+    c.close();
+  });
+
+  it("filters the trail by kind", async () => {
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+    c.send({ type: "audit.query", requestId: "au-f", kinds: ["workspace-opened"] });
+    const res = await c.waitFor("audit.entries");
+    expect(res.entries.length).toBeGreaterThan(0);
+    expect(res.entries.every((e) => e.kind === "workspace-opened")).toBe(true);
+    c.close();
+  });
+});
+
 describe("state isolation", () => {
   it("writes its state inside AIW_HOME", () => {
     expect(existsSync(join(home, "workspaces.json"))).toBe(true);

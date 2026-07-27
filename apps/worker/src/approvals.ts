@@ -86,6 +86,11 @@ export class ApprovalManager {
     return [...this.pending.values()].map((p) => p.request);
   }
 
+  /** The still-pending request for an id, or undefined once resolved. */
+  get(requestId: string): ApprovalRequest | undefined {
+    return this.pending.get(requestId)?.request;
+  }
+
   /** Reject everything still pending (e.g. on shutdown). */
   rejectAll(): void {
     for (const { resolve } of this.pending.values()) resolve(false);

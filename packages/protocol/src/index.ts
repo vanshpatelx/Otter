@@ -78,6 +78,35 @@ export interface TerminalSession {
   lastActivity: number;
 }
 
+/** The categories of event the Worker keeps a durable record of. */
+export type AuditKind =
+  | "chat"
+  | "command"
+  | "approval-requested"
+  | "approval-resolved"
+  | "workspace-opened"
+  | "workspace-closed"
+  | "terminal-started"
+  | "terminal-exited"
+  | "session-created"
+  | "client-authed";
+
+/** One durable line in the Worker's audit trail. */
+export interface AuditEntry {
+  /** Epoch millis when it happened. */
+  ts: number;
+  kind: AuditKind;
+  /** One-line human summary, e.g. the command or the chat text. */
+  summary: string;
+  /** Which workspace it belonged to, when applicable. */
+  workspaceId?: string;
+  sessionId?: string;
+  /** For approvals: was it allowed? */
+  approved?: boolean;
+  /** Longer context — full command, rejection reason, etc. */
+  detail?: string;
+}
+
 /** A local dev server detected on the Worker's machine. */
 export interface PreviewServer {
   port: number;
@@ -241,6 +270,8 @@ export type ClientMessage =
   | { type: "terminal.close"; terminalId: string }
   /** Ask which terminals are running, so the client can reattach. */
   | { type: "terminal.list"; requestId: string }
+  /** Ask for the durable audit trail, newest first. */
+  | { type: "audit.query"; requestId: string; limit?: number; kinds?: AuditKind[]; workspaceId?: string }
   | { type: "fs.list"; requestId: string; workspaceId: string; path: string }
   | { type: "fs.read"; requestId: string; workspaceId: string; path: string }
   | {
@@ -303,6 +334,7 @@ export type ServerMessage =
   | { type: "command.result"; commandId: string; code: number | null; output: string; approved: boolean }
   | { type: "terminal.output"; terminalId: string; data: string }
   | { type: "terminal.sessions"; requestId: string; sessions: TerminalSession[] }
+  | { type: "audit.entries"; requestId: string; entries: AuditEntry[] }
   | { type: "terminal.exit"; terminalId: string; code: number | null }
   | { type: "fs.listing"; requestId: string; path: string; entries: FileEntry[] }
   | {

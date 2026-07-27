@@ -31,6 +31,8 @@ import { ParkedTasks } from "./parked.js";
 import { ScheduledPrompts } from "./schedule.js";
 import { formatWait } from "./ratelimit.js";
 import { RelayLink } from "./relay-link.js";
+import { AuditLog } from "./audit.js";
+import { configDir } from "./config.js";
 import { log } from "./log.js";
 import { ClaudeCodeAdapter } from "./adapters/claude-code.js";
 import type { AgentAdapter } from "./adapters/types.js";
@@ -79,6 +81,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
 
   const sessions = new SessionStore();
   const approvals = new ApprovalManager();
+  const audit = new AuditLog(configDir());
   const adapters = buildAdapters(config);
   const defaultAgent: AgentKind | null = config.agents[0] ?? null;
 
@@ -143,7 +146,10 @@ export function startWorker(config: WorkerConfig): RunningWorker {
 
   const terminals = new TerminalManager({
     onData: (terminalId, data) => server.broadcast({ type: "terminal.output", terminalId, data }),
-    onExit: (terminalId, code) => server.broadcast({ type: "terminal.exit", terminalId, code }),
+    onExit: (terminalId, code) => {
+      audit.record("terminal-exited", terminalId, { detail: code == null ? "killed" : `exit ${code}` });
+      server.broadcast({ type: "terminal.exit", terminalId, code });
+    },
   });
 
   let activeTasks = 0;
@@ -329,6 +335,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
       );
       // Broadcast so any connected Desktop can approve.
       server.broadcast({ type: "approval.request", request });
+      audit.record("approval-requested", sensitive.summary, { workspaceId, detail: command });
       notify("approval-waiting", "warn", `Approval needed: ${sensitive.summary}`, command);
       log.approval(sensitive.kind, command, false);
 
@@ -520,6 +527,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
           );
           log.approval(sensitive.kind, command, true);
           server.broadcast({ type: "approval.request", request });
+          audit.record("approval-requested", `Agent: ${sensitive.summary}`, { detail: command || toolName });
           notify("approval-waiting", "warn", `Agent needs approval: ${sensitive.summary}`, command);
 
           const approved = await decision;
@@ -594,6 +602,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
             }
             authed.add(conn.id);
             log.client("authed", msg.clientId);
+            audit.record("client-authed", msg.clientId);
             conn.send({ type: "auth.result", ok: true });
             void broadcastState();
             // Rehydrate persisted conversations so the Desktop reconnects with
@@ -616,6 +625,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
             try {
               const opened = workspaces.open(msg.path);
               log.workspace("opened", opened.path);
+              audit.record("workspace-opened", opened.path, { workspaceId: opened.workspaceId });
               void workspaces
                 .list(activeByWorkspace)
                 .then(async (all) => {
@@ -636,12 +646,14 @@ export function startWorker(config: WorkerConfig): RunningWorker {
           case "workspace.close":
             workspaces.close(msg.workspaceId);
             log.workspace("closed", msg.workspaceId);
+            audit.record("workspace-closed", msg.workspaceId, { workspaceId: msg.workspaceId });
             void broadcastState();
             break;
           case "session.create": {
             // Several conversations can run in one workspace at once.
             const sessionId = `s_${Math.random().toString(36).slice(2, 10)}`;
             workspaces.addSession(msg.workspaceId, sessionId);
+            audit.record("session-created", sessionId, { workspaceId: msg.workspaceId, sessionId });
             conn.send({
               type: "session.created",
               requestId: msg.requestId,
@@ -653,17 +665,26 @@ export function startWorker(config: WorkerConfig): RunningWorker {
           }
           case "chat.send":
             log.chat(`${msg.workspaceId}/${msg.sessionId}`, msg.text);
+            audit.record("chat", msg.text, { workspaceId: msg.workspaceId, sessionId: msg.sessionId });
             void handleChat(conn, msg.workspaceId, msg.sessionId, msg.text);
             break;
           case "command.run":
             log.command(msg.workspaceId, msg.command);
+            audit.record("command", msg.command, { workspaceId: msg.workspaceId });
             void handleCommand(conn, msg.workspaceId, msg.commandId, msg.command);
             break;
-          case "approval.resolve":
+          case "approval.resolve": {
+            const pending = approvals.get(msg.requestId);
             if (!approvals.resolve(msg.requestId, msg.approved)) {
               log.info(`approval ${msg.requestId} already resolved`);
+            } else if (pending) {
+              audit.record("approval-resolved", pending.summary, {
+                approved: msg.approved,
+                detail: pending.details,
+              });
             }
             break;
+          }
           case "terminal.start": {
             let cwd: string;
             try {
@@ -689,6 +710,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
               terminals.resize(msg.terminalId, msg.cols, msg.rows);
             } else {
               log.terminal("started", msg.terminalId);
+              audit.record("terminal-started", cwd, { workspaceId: msg.workspaceId });
             }
             break;
           }
@@ -703,6 +725,13 @@ export function startWorker(config: WorkerConfig): RunningWorker {
             break;
           case "terminal.list":
             conn.send({ type: "terminal.sessions", requestId: msg.requestId, sessions: terminals.list() });
+            break;
+          case "audit.query":
+            conn.send({
+              type: "audit.entries",
+              requestId: msg.requestId,
+              entries: audit.query({ limit: msg.limit, kinds: msg.kinds, workspaceId: msg.workspaceId }),
+            });
             break;
           case "fs.list":
             // Each workspace has its own file service, so traversal protection
