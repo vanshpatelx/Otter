@@ -107,6 +107,24 @@ starts in seconds thereafter. Because the workbench runs remotely, it needs the
 Worker reachable and does not work offline — that is the deliberate trade for
 having the whole editor rather than a text box.
 
+## Mobile companion
+
+`apps/mobile` is an Expo React Native app — Otter on a phone. It speaks the same
+wire protocol as the desktop over WebSocket, so it pairs with a workstation the
+same way (its address plus the code from `aiw worker status`) and gives you the
+things that matter away from the desk: **approve or reject agent actions**, chat
+with an agent, and watch the activity feed. Approvals are the point — a gate can
+be cleared from your pocket.
+
+```sh
+cd apps/mobile
+pnpm start          # Expo dev server — open in Expo Go, or press w for web
+```
+
+It runs on iOS, Android, and the web (via react-native-web). The pairing code is
+kept in the device keychain on a phone, and the app reconnects on its own as the
+network comes and goes.
+
 ## Remote access
 
 Direct transports (Tailscale, WireGuard, LAN, SSH tunnel) need no extra

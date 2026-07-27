@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Otter",
+    "slug": "otter",
+    "scheme": "otter",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a0a0b",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "dev.otter.mobile" },
+    "android": { "package": "dev.otter.mobile", "adaptiveIcon": { "backgroundColor": "#071950" } },
+    "web": { "bundler": "metro" }
+  }
+}
