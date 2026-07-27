@@ -16,6 +16,11 @@ export interface WorkerConfig {
   createdAt: string;
   /** Optional relay to dial out to, e.g. ws://relay.example.com:8787 */
   relayUrl?: string;
+  /**
+   * Opt-in to sending redacted crash reports to OTTER_CRASH_DSN. Off unless the
+   * user chose it at init. Local crash dumps are written regardless.
+   */
+  crashReporting?: boolean;
 }
 
 /**

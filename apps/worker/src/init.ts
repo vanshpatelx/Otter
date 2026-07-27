@@ -34,6 +34,8 @@ async function runInitNonInteractive(opts: InitOptions): Promise<void> {
     agents: detected.map((a) => a.kind),
     pairingCode: existing?.pairingCode ?? generatePairingCode(),
     createdAt: existing?.createdAt ?? new Date().toISOString(),
+    // Unattended setup never opts you in; it preserves an existing choice.
+    crashReporting: existing?.crashReporting ?? false,
   };
   const relayUrl = opts.relayUrl ?? existing?.relayUrl;
   if (relayUrl) config.relayUrl = relayUrl;
@@ -112,6 +114,11 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
 
     const pairingCode = existing?.pairingCode ?? generatePairingCode();
 
+    const crashReporting = await prompt.confirm(
+      "\nSend redacted crash reports to help fix bugs? (local dumps are kept either way)",
+      existing?.crashReporting ?? false,
+    );
+
     const config: WorkerConfig = {
       workerId: existing?.workerId ?? generateWorkerId(),
       port: Number.isFinite(port) && port > 0 ? port : 4501,
@@ -120,6 +127,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
       agents,
       pairingCode,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
+      crashReporting,
     };
 
     saveConfig(config);

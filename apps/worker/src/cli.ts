@@ -11,6 +11,9 @@ import { runInit, type InitOptions } from "./init.js";
 import { startWorker } from "./server.js";
 import { serveUi, uiDir, uiDirExists } from "./ui.js";
 import { installService, serviceStatus, uninstallService } from "./service.js";
+import { CrashReporter, crashReportingEnv } from "./crash.js";
+import { configDir } from "./config.js";
+import { PROTOCOL_VERSION } from "@ai-workspace/protocol";
 import { log } from "./log.js";
 
 /** Parse `--flag value` and boolean `--flag` pairs from args. */
@@ -77,6 +80,19 @@ async function cmdStart(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  // Record crashes before anything else, so a failure during startup is caught.
+  // Local dumps always; a redacted report leaves the machine only when the user
+  // opted in AND an OTTER_CRASH_DSN is set.
+  const reporter = new CrashReporter({
+    homeDir: configDir(),
+    workerId: config.workerId,
+    version: String(PROTOCOL_VERSION),
+    optedIn: config.crashReporting === true,
+    ...crashReportingEnv(),
+  });
+  reporter.install();
+  if (reporter.willSend) log.info("crash reporting on (redacted reports → OTTER_CRASH_DSN)");
+
   const worker = startWorker(config);
 
   let shuttingDown = false;
@@ -124,6 +140,12 @@ function cmdStatus(): void {
   console.log(`  keepAwake:   ${config.keepAwake}`);
   console.log(`  agents:      ${config.agents.map(agentLabel).join(", ") || "none"}`);
   console.log(`  pairing:     ${config.pairingCode}`);
+  const crash = config.crashReporting
+    ? crashReportingEnv().dsn
+      ? "on (sending to OTTER_CRASH_DSN)"
+      : "on (no OTTER_CRASH_DSN set — local dumps only)"
+    : "off (local dumps only)";
+  console.log(`  crashReport: ${crash}`);
 }
 
 async function main(): Promise<void> {
