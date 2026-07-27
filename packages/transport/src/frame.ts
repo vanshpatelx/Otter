@@ -37,6 +37,11 @@ export function isClientMessage(msg: WireMessage): msg is ClientMessage {
     case "fs.write":
     case "terminal.list":
     case "audit.query":
+    case "git.status":
+    case "git.diff":
+    case "git.stage":
+    case "git.stageAll":
+    case "git.commit":
     case "preview.scan":
     case "vscode.start":
     case "preview.reload":

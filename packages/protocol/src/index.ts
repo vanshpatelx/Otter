@@ -107,6 +107,27 @@ export interface AuditEntry {
   detail?: string;
 }
 
+/** One changed file in a workspace's git working tree. */
+export interface GitFileChange {
+  /** Repo-relative path. */
+  path: string;
+  status: "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+  /** Has staged changes in the index. */
+  staged: boolean;
+  /** Has unstaged changes in the working tree (or is untracked). */
+  unstaged: boolean;
+}
+
+/** A workspace's git status: branch, upstream gap, and changed files. */
+export interface GitStatus {
+  isRepo: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  files: GitFileChange[];
+  clean: boolean;
+}
+
 /** A local dev server detected on the Worker's machine. */
 export interface PreviewServer {
   port: number;
@@ -272,6 +293,15 @@ export type ClientMessage =
   | { type: "terminal.list"; requestId: string }
   /** Ask for the durable audit trail, newest first. */
   | { type: "audit.query"; requestId: string; limit?: number; kinds?: AuditKind[]; workspaceId?: string }
+  /** Git working-tree status for a workspace. */
+  | { type: "git.status"; requestId: string; workspaceId: string }
+  /** Unified diff for one file, staged or unstaged. */
+  | { type: "git.diff"; requestId: string; workspaceId: string; path: string; staged: boolean }
+  /** Stage / unstage a path, or stage everything. */
+  | { type: "git.stage"; requestId: string; workspaceId: string; path: string; staged: boolean }
+  | { type: "git.stageAll"; requestId: string; workspaceId: string }
+  /** Commit whatever is staged. */
+  | { type: "git.commit"; requestId: string; workspaceId: string; message: string }
   | { type: "fs.list"; requestId: string; workspaceId: string; path: string }
   | { type: "fs.read"; requestId: string; workspaceId: string; path: string }
   | {
@@ -335,6 +365,10 @@ export type ServerMessage =
   | { type: "terminal.output"; terminalId: string; data: string }
   | { type: "terminal.sessions"; requestId: string; sessions: TerminalSession[] }
   | { type: "audit.entries"; requestId: string; entries: AuditEntry[] }
+  | { type: "git.status.result"; requestId: string; status: GitStatus }
+  | { type: "git.diff.result"; requestId: string; path: string; staged: boolean; diff: string }
+  /** Ack for stage/unstage/commit; `ok` false carries a reason in `message`. */
+  | { type: "git.ok"; requestId: string; ok: boolean; message?: string }
   | { type: "terminal.exit"; terminalId: string; code: number | null }
   | { type: "fs.listing"; requestId: string; path: string; entries: FileEntry[] }
   | {

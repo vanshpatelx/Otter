@@ -42,6 +42,7 @@ import { ActivityLane } from "./components/ActivityLane.js";
 import { CommandPalette, type PaletteItem } from "./components/CommandPalette.js";
 import { AuditPanel } from "./components/AuditPanel.js";
 import { RunningTerminals } from "./components/RunningTerminals.js";
+import { GitPanel } from "./components/GitPanel.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
 import { UsageBar } from "./components/UsageBar.js";
@@ -63,6 +64,7 @@ const TABS = [
   { id: "chat", label: "Chat", Icon: Bot },
   { id: "terminal", label: "Terminal", Icon: Terminal },
   { id: "code", label: "Code", Icon: FileCode },
+  { id: "git", label: "Git", Icon: GitBranch },
   { id: "preview", label: "Preview", Icon: Globe },
 ] as const;
 
@@ -265,7 +267,7 @@ export function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
-  const [tab, setTab] = useState<"chat" | "terminal" | "code" | "preview">("chat");
+  const [tab, setTab] = useState<"chat" | "terminal" | "code" | "git" | "preview">("chat");
   // The project sidebar collapses to an icon rail, VS Code style; remembered.
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem("aiw.sidebar") !== "closed");
   // Panel width is draggable like VS Code's side bar, and remembered.
@@ -805,6 +807,16 @@ export function App() {
                 url={active.worker.url}
                 workspacePath={active.workspace.path}
                 vscode={api.vscode}
+                connected={!!connected}
+              />
+            </div>
+          ) : tab === "git" ? (
+            <div className="min-h-0 flex-1">
+              <GitPanel
+                key={`${active.worker.url}:${active.workspace.workspaceId}`}
+                url={active.worker.url}
+                workspaceId={active.workspace.workspaceId}
+                git={api.git}
                 connected={!!connected}
               />
             </div>
