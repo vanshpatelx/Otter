@@ -56,6 +56,10 @@ jobs:
           # Ship sources + build output; the install script builds from these.
           cp -R apps packages package.json pnpm-workspace.yaml pnpm-lock.yaml \
                 tsconfig.base.json install.sh README.md LICENSE "$STAGE"/
+          # The CLI bundle installs the Worker and desktop; the mobile app is a
+          # separate artifact and would only drag Expo/React Native into every
+          # worker install, so leave it out.
+          rm -rf "$STAGE/apps/mobile"
           # Drop dependencies and build output — the installer builds from
           # source, and leaving these in ballooned the tarball to 200 MB+.
           find "$STAGE" \( -name node_modules -o -name dist -o -name release \) \
