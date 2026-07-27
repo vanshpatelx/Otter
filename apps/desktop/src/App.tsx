@@ -43,6 +43,7 @@ import { CommandPalette, type PaletteItem } from "./components/CommandPalette.js
 import { AuditPanel } from "./components/AuditPanel.js";
 import { RunningTerminals } from "./components/RunningTerminals.js";
 import { GitPanel } from "./components/GitPanel.js";
+import { UpdateBanner } from "./components/UpdateBanner.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
 import { UsageBar } from "./components/UsageBar.js";
@@ -604,6 +605,7 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col">
+      <UpdateBanner />
       <ToastStack approvals={allApprovals} notices={feed} onResolve={resolveApproval} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} />
       <AuditPanel
