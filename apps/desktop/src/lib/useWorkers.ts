@@ -8,6 +8,7 @@ import type {
   ParkedTask,
   PreviewServer,
   ScheduledPrompt,
+  TerminalSession,
   TurnUsage,
   ServerMessage,
   TodoItem,
@@ -164,7 +165,10 @@ export interface WorkersApi {
     start: (url: string, workspaceId: string, terminalId: string, cols: number, rows: number) => void;
     input: (url: string, terminalId: string, data: string) => void;
     resize: (url: string, terminalId: string, cols: number, rows: number) => void;
-    close: (url: string, terminalId: string) => void;
+    /** Kill a terminal for good (closing a tab only detaches). */
+    kill: (url: string, terminalId: string) => void;
+    /** List terminals still running on the machine, to reattach. */
+    list: (url: string) => Promise<TerminalSession[]>;
     subscribe: (listener: TerminalListener) => () => void;
   };
   fs: {
@@ -477,6 +481,12 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
             case "terminal.exit":
               for (const l of termListeners.current) l(msg.terminalId, "\r\n[process exited]\r\n");
               break;
+            case "terminal.sessions": {
+              const pending = fsPending.current.get(msg.requestId);
+              fsPending.current.delete(msg.requestId);
+              pending?.resolve(msg.sessions);
+              break;
+            }
             case "fs.listing": {
               const pending = fsPending.current.get(msg.requestId);
               fsPending.current.delete(msg.requestId);
@@ -755,7 +765,11 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
         emit(url, { type: "terminal.input", terminalId, data }),
       resize: (url: string, terminalId: string, cols: number, rows: number) =>
         emit(url, { type: "terminal.resize", terminalId, cols, rows }),
-      close: (url: string, terminalId: string) => emit(url, { type: "terminal.close", terminalId }),
+      /** Terminate a terminal for good — closing a tab detaches, this kills. */
+      kill: (url: string, terminalId: string) => emit(url, { type: "terminal.close", terminalId }),
+      /** Which terminals are running on the machine, for reattaching. */
+      list: (url: string) =>
+        request<TerminalSession[]>(url, (requestId) => ({ type: "terminal.list", requestId })),
       subscribe: (listener: TerminalListener) => {
         termListeners.current.add(listener);
         return () => {
@@ -763,7 +777,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
         };
       },
     }),
-    [emit],
+    [emit, request],
   );
 
   const fs = useMemo(

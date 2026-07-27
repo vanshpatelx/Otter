@@ -680,7 +680,14 @@ export function startWorker(config: WorkerConfig): RunningWorker {
               log.error(err);
               notify("agent-error", "error", "Terminal failed to start", err);
               conn.send({ type: "terminal.exit", terminalId: msg.terminalId, code: null });
-            } else if (!existed) {
+            } else if (existed) {
+              // Reattaching to a terminal that kept running — replay its
+              // scrollback to this client only, so the fresh xterm shows history
+              // instead of a blank screen, then resize the PTY to fit.
+              const snapshot = terminals.snapshot(msg.terminalId);
+              if (snapshot) conn.send({ type: "terminal.output", terminalId: msg.terminalId, data: snapshot });
+              terminals.resize(msg.terminalId, msg.cols, msg.rows);
+            } else {
               log.terminal("started", msg.terminalId);
             }
             break;
@@ -693,6 +700,9 @@ export function startWorker(config: WorkerConfig): RunningWorker {
             break;
           case "terminal.close":
             terminals.close(msg.terminalId);
+            break;
+          case "terminal.list":
+            conn.send({ type: "terminal.sessions", requestId: msg.requestId, sessions: terminals.list() });
             break;
           case "fs.list":
             // Each workspace has its own file service, so traversal protection

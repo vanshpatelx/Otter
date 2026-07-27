@@ -67,6 +67,17 @@ export interface WorkerNotification {
   at: number;
 }
 
+/** A terminal (PTY) running on the Worker, listable so clients can reattach. */
+export interface TerminalSession {
+  id: string;
+  /** Directory the shell was spawned in. */
+  cwd: string;
+  cols: number;
+  rows: number;
+  createdAt: number;
+  lastActivity: number;
+}
+
 /** A local dev server detected on the Worker's machine. */
 export interface PreviewServer {
   port: number;
@@ -228,6 +239,8 @@ export type ClientMessage =
   | { type: "terminal.input"; terminalId: string; data: string }
   | { type: "terminal.resize"; terminalId: string; cols: number; rows: number }
   | { type: "terminal.close"; terminalId: string }
+  /** Ask which terminals are running, so the client can reattach. */
+  | { type: "terminal.list"; requestId: string }
   | { type: "fs.list"; requestId: string; workspaceId: string; path: string }
   | { type: "fs.read"; requestId: string; workspaceId: string; path: string }
   | {
@@ -289,6 +302,7 @@ export type ServerMessage =
   | { type: "approval.resolved"; requestId: string; approved: boolean }
   | { type: "command.result"; commandId: string; code: number | null; output: string; approved: boolean }
   | { type: "terminal.output"; terminalId: string; data: string }
+  | { type: "terminal.sessions"; requestId: string; sessions: TerminalSession[] }
   | { type: "terminal.exit"; terminalId: string; code: number | null }
   | { type: "fs.listing"; requestId: string; path: string; entries: FileEntry[] }
   | {
