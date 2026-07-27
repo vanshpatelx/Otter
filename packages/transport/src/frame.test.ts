@@ -42,6 +42,7 @@ describe("message classification", () => {
     "fs.list",
     "fs.read",
     "terminal.list",
+    "audit.query",
     "preview.scan",
     "vscode.start",
     "preview.reload",
@@ -60,6 +61,7 @@ describe("message classification", () => {
     "command.result",
     "terminal.output",
     "fs.listing",
+    "audit.entries",
     "notification",
   ])("treats %s as a server message", (type) => {
     expect(isServerMessage({ type } as never)).toBe(true);

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ApprovalRequest,
+  AuditEntry,
+  AuditKind,
   ClientMessage,
   FileEntry,
   DiscoveredProject,
@@ -188,6 +190,10 @@ export interface WorkersApi {
   };
   vscode: {
     start: (url: string, onProgress: (p: VSCodeProgress) => void) => Promise<VSCodeReady>;
+  };
+  audit: {
+    /** The machine's durable event trail, newest first. */
+    query: (url: string, opts?: { limit?: number; kinds?: AuditKind[]; workspaceId?: string }) => Promise<AuditEntry[]>;
   };
   discover: {
     /** Past agent conversations found on that machine. */
@@ -485,6 +491,12 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
               const pending = fsPending.current.get(msg.requestId);
               fsPending.current.delete(msg.requestId);
               pending?.resolve(msg.sessions);
+              break;
+            }
+            case "audit.entries": {
+              const pending = fsPending.current.get(msg.requestId);
+              fsPending.current.delete(msg.requestId);
+              pending?.resolve(msg.entries);
               break;
             }
             case "fs.listing": {
@@ -842,6 +854,20 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
     [emit],
   );
 
+  const audit = useMemo(
+    () => ({
+      query: (url: string, opts?: { limit?: number; kinds?: AuditKind[]; workspaceId?: string }) =>
+        request<AuditEntry[]>(url, (requestId) => ({
+          type: "audit.query",
+          requestId,
+          limit: opts?.limit,
+          kinds: opts?.kinds,
+          workspaceId: opts?.workspaceId,
+        })),
+    }),
+    [request],
+  );
+
   const discover = useMemo(
     () => ({
       projects: (url: string) =>
@@ -880,6 +906,7 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
     fs,
     preview,
     vscode,
+    audit,
     discover,
   };
 }
