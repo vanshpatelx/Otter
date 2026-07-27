@@ -9,7 +9,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ not started
 | 0 | Repo + monorepo scaffold | ✅ | pnpm workspace, protocol/transport packages, 3 apps, custom license |
 | 1 | Wire protocol (Desktop⇄Worker⇄Relay types) | ✅ | `@ai-workspace/protocol` discriminated unions |
 | 2 | WebSocket transport (server + reconnecting client) | ✅ | `@ai-workspace/transport`, verified end-to-end |
-| 3 | `aiw` CLI — `init` / `start` / `status` | ✅ | config at `~/.ai-workspace/worker.json`, `--yes` unattended mode |
+| 3 | `otter` CLI — `init` / `start` / `status` | ✅ | config at `~/.ai-workspace/worker.json`, `--yes` unattended mode |
 | 4 | Keep-awake manager (caffeinate power assertion) | ✅ | policy: while-active / always / off, tied to task activity |
 | 5 | Agent detection (which CLIs are installed) | ✅ | probes claude/codex/gemini/openhands/roo on PATH |
 
@@ -36,7 +36,7 @@ Status legend: ✅ done · 🚧 in progress · ⬜ not started
 
 | # | Milestone | Status | Notes |
 |---|-----------|--------|-------|
-| D1 | Worker install: `curl \| sh` → `aiw` binary | ✅ | install.sh clones, builds, links `aiw`; `aiw ui` serves the built Desktop UI; verified running the full stack from `dist` |
-| D2 | Worker auto-start as launchd service | ✅ | `aiw service install/uninstall/status` writes a LaunchAgent with RunAtLoad + KeepAlive; verified the Worker starts, serves, and is restarted by launchd after being killed |
+| D1 | Worker install: `curl \| sh` → `otter` binary | ✅ | install.sh clones, builds, links `otter`; `otter ui` serves the built Desktop UI; verified running the full stack from `dist` |
+| D2 | Worker auto-start as launchd service | ✅ | `otter service install/uninstall/status` writes a LaunchAgent with RunAtLoad + KeepAlive; verified the Worker starts, serves, and is restarted by launchd after being killed |
 | D3 | Desktop `.dmg` download (Electron build) | ✅ | Electron shell (contextIsolation, no nodeIntegration) + electron-builder DMG; verified by mounting a locally built DMG |
 | D4 | CI + release automation | ✅ | GitHub Actions: typecheck/build on every push plus a clean-machine `install.sh` smoke test; tagged releases build the DMG (arm64+x64) and a CLI tarball with checksums |

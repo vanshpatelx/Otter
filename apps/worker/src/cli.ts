@@ -42,38 +42,38 @@ function initOptionsFromFlags(flags: Record<string, string | boolean>): InitOpti
 }
 
 /**
- * `aiw` command-line entrypoint.
+ * `otter` command-line entrypoint.
  *
- *   aiw worker init     interactive setup wizard
- *   aiw worker start     launch the transport server
- *   aiw worker status    show config + whether it's set up
- *   aiw help
+ *   otter worker init     interactive setup wizard
+ *   otter worker start     launch the transport server
+ *   otter worker status    show config + whether it's set up
+ *   otter help
  */
 
-const HELP = `ai-workspace CLI
+const HELP = `Otter CLI
 
 Usage:
-  aiw worker init      Configure this machine as a Worker
+  otter worker init      Configure this machine as a Worker
                          --yes                 unattended (defaults + detected agents)
                          --port <n>            transport port (default 4501)
                          --transport <kind>    tailscale|wireguard|local|ssh
                          --keep-awake <policy> while-active|always|off
-  aiw worker start     Start the Worker (transport server + keep-awake)
-  aiw worker status    Show this Worker's configuration
-  aiw ui [--port n]    Serve the Desktop UI (default http://127.0.0.1:5180)
+  otter worker start     Start the Worker (transport server + keep-awake)
+  otter worker status    Show this Worker's configuration
+  otter ui [--port n]    Serve the Desktop UI (default http://127.0.0.1:5180)
 
-  aiw service install    Run the Worker at login and restart it if it exits
-  aiw service uninstall  Remove the background service
-  aiw service status     Show whether the service is installed and running
+  otter service install    Run the Worker at login and restart it if it exits
+  otter service uninstall  Remove the background service
+  otter service status     Show whether the service is installed and running
 
-  aiw help             Show this help
+  otter help             Show this help
 
 Docs: https://github.com/vanshpatelx/Otter`;
 
 async function cmdStart(): Promise<void> {
   const config = loadConfig();
   if (!config) {
-    console.error("No Worker config found. Run `aiw worker init` first.");
+    console.error("No Worker config found. Run `otter worker init` first.");
     process.exitCode = 1;
     return;
   }
@@ -108,12 +108,12 @@ async function cmdStart(): Promise<void> {
 
 function cmdStatus(): void {
   if (!configExists()) {
-    console.log("Worker: not configured. Run `aiw worker init`.");
+    console.log("Worker: not configured. Run `otter worker init`.");
     return;
   }
   const config = loadConfig();
   if (!config) {
-    console.log(`Worker: config at ${configPath()} is unreadable/corrupt. Re-run \`aiw worker init\`.`);
+    console.log(`Worker: config at ${configPath()} is unreadable/corrupt. Re-run \`otter worker init\`.`);
     return;
   }
   console.log("Worker: configured");
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
       switch (sub) {
         case "install": {
           if (!configExists()) {
-            console.error("No Worker config found. Run `aiw worker init` first.");
+            console.error("No Worker config found. Run `otter worker init` first.");
             process.exitCode = 1;
             return;
           }
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
           console.log("Worker service installed and started.");
           console.log(`  plist:  ${path}`);
           console.log("  It now starts at login and restarts if it exits.");
-          console.log("  Check it with:  aiw service status");
+          console.log("  Check it with:  otter service status");
           return;
         }
         case "uninstall":

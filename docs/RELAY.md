@@ -19,8 +19,8 @@ behind NAT.
 node apps/relay/dist/index.js          # listens on :8787 (AIW_RELAY_PORT)
 
 # on the Worker machine
-aiw worker init --relay ws://relay.example.com:8787
-aiw worker start
+otter worker init --relay ws://relay.example.com:8787
+otter worker start
 ```
 
 The Worker prints the address to give the Desktop:
@@ -30,7 +30,7 @@ The Worker prints the address to give the Desktop:
 ```
 
 Add that as the workstation address in the Desktop app and pair with the usual
-code from `aiw worker status`.
+code from `otter worker status`.
 
 ## What the relay stores
 

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
+    "otter": "dist/cli.js",
     "aiw": "dist/cli.js"
   },
   "scripts": {

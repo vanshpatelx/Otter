@@ -3,7 +3,7 @@ import { stdin, stdout } from "node:process";
 
 /**
  * Minimal interactive prompts over readline — no external deps.
- * Used only by `aiw worker init`.
+ * Used only by `otter worker init`.
  */
 export class Prompt {
   private rl: Interface;

@@ -19,16 +19,19 @@ export interface WorkerConfig {
 }
 
 /**
- * All Worker state lives under one directory. `AIW_HOME` overrides it, which
- * lets several Workers run on one machine with independent configs and
- * sessions.
+ * All Worker state lives under one directory. `OTTER_HOME` (or the older
+ * `AIW_HOME`) overrides it, which lets several Workers run on one machine with
+ * independent configs and sessions.
+ *
+ * The default stays `~/.ai-workspace` even after the rename to Otter: existing
+ * installs keep their config, sessions, and audit trail exactly where they are.
  *
  * Resolved per call rather than at import: a module-level constant is fixed
- * before anything can set AIW_HOME, which silently sent state to the real
+ * before anything can set the env var, which silently sent state to the real
  * home directory instead of the intended one.
  */
 export function configDir(): string {
-  return process.env.AIW_HOME ?? join(homedir(), ".ai-workspace");
+  return process.env.OTTER_HOME ?? process.env.AIW_HOME ?? join(homedir(), ".ai-workspace");
 }
 
 function configFile(): string {
@@ -57,12 +60,12 @@ export function saveConfig(config: WorkerConfig): void {
   writeFileSync(configFile(), JSON.stringify(config, null, 2) + "\n", "utf8");
 }
 
-/** Short human-friendly pairing code, e.g. "AIW-4F9K-2Q7X". */
+/** Short human-friendly pairing code, e.g. "OTTER-4F9K-2Q7X". */
 export function generatePairingCode(): string {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous chars
   const block = () =>
     Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-  return `AIW-${block()}-${block()}`;
+  return `OTTER-${block()}-${block()}`;
 }
 
 export function generateWorkerId(): string {

@@ -8,7 +8,7 @@ import type { WorkerTarget } from "../lib/useWorker";
  * The pairing screen — the app's front door.
  *
  * A phone reaches a workstation the same way the Desktop does: its address plus
- * the code from `aiw worker status`. Kept deliberately plain so the first thing
+ * the code from `otter worker status`. Kept deliberately plain so the first thing
  * a new user does is obvious.
  */
 export function PairScreen({ onPair }: { onPair: (t: WorkerTarget) => void }) {
@@ -45,7 +45,7 @@ export function PairScreen({ onPair }: { onPair: (t: WorkerTarget) => void }) {
           onChangeText={(t) => setCode(t.toUpperCase())}
           autoCapitalize="characters"
           autoCorrect={false}
-          placeholder="AIW-XXXX-XXXX"
+          placeholder="OTTER-XXXX-XXXX"
           placeholderTextColor={colors.textFaint}
           style={[styles.input, styles.code]}
         />
@@ -58,7 +58,7 @@ export function PairScreen({ onPair }: { onPair: (t: WorkerTarget) => void }) {
         </TouchableOpacity>
 
         <Text style={styles.hint}>
-          Run <Text style={styles.mono}>aiw worker start</Text> on a machine, then enter its address
+          Run <Text style={styles.mono}>otter worker start</Text> on a machine, then enter its address
           and code above.
         </Text>
       </View>

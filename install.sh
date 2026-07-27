@@ -4,8 +4,10 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/vanshpatelx/Otter/main/install.sh | bash
 #
-# Installs the Worker (the `aiw` CLI) into ~/.ai-workspace/app and links it
+# Installs the Worker (the `otter` CLI) into ~/.ai-workspace/app and links it
 # onto your PATH. Everything stays on this machine; nothing is uploaded.
+#
+# The command is `otter`; `aiw` is kept as a backward-compatible alias.
 
 set -euo pipefail
 
@@ -52,9 +54,11 @@ info "Building"
 
 # --- link --------------------------------------------------------------------
 mkdir -p "$BIN_DIR"
-ln -sf "$APP_DIR/apps/worker/dist/cli.js" "$BIN_DIR/aiw"
 chmod +x "$APP_DIR/apps/worker/dist/cli.js"
-info "Linked aiw -> $BIN_DIR/aiw"
+ln -sf "$APP_DIR/apps/worker/dist/cli.js" "$BIN_DIR/otter"
+# Keep `aiw` working for anyone who installed before the rename.
+ln -sf "$APP_DIR/apps/worker/dist/cli.js" "$BIN_DIR/aiw"
+info "Linked otter -> $BIN_DIR/otter (and aiw alias)"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -65,13 +69,14 @@ esac
 # --- done --------------------------------------------------------------------
 cat <<'EOF'
 
-  AI Workspace installed.
+  Otter installed.
 
   Next steps:
-    aiw worker init      configure this machine (transport, keep-awake, agents)
-    aiw worker start     run the Worker
-    aiw ui               open the Desktop UI at http://127.0.0.1:5180
+    otter worker init      configure this machine (transport, keep-awake, agents)
+    otter worker start     run the Worker
+    otter ui               open the Desktop UI at http://127.0.0.1:5180
 
-  Pair the UI with the code from `aiw worker status`.
+  Pair the UI with the code from `otter worker status`.
+  (`aiw` still works as an alias if you're used to it.)
 
 EOF

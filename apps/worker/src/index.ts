@@ -1,7 +1,7 @@
 /**
  * Worker library surface.
  *
- * The runnable entrypoint is the `aiw` CLI in cli.ts. This module re-exports
+ * The runnable entrypoint is the `otter` CLI in cli.ts. This module re-exports
  * the pieces other packages (and tests) may want to import directly.
  */
 export { startWorker, type RunningWorker } from "./server.js";

@@ -1286,7 +1286,7 @@ function PairingScreen({
               <CardTitle>Add a machine</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Enter its address and the code from{" "}
-                <code className="text-xs">aiw worker status</code>.
+                <code className="text-xs">otter worker status</code>.
               </p>
             </>
           )}
@@ -1311,7 +1311,7 @@ function PairingScreen({
           </Button>
           {firstRun && (
             <p className="text-center text-xs text-muted-foreground">
-              Run <code className="text-[11px]">aiw worker start</code> on a machine, then enter its
+              Run <code className="text-[11px]">otter worker start</code> on a machine, then enter its
               code above.
             </p>
           )}
