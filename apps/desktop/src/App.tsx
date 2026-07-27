@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Server,
   History,
+  MessageSquare,
 } from "lucide-react";
 import type { ApprovalRequest, Workspace } from "@ai-workspace/protocol";
 import {
@@ -38,6 +39,7 @@ import { NotificationCenter, type FeedItem } from "./components/NotificationCent
 import { ToastStack } from "./components/ToastStack.js";
 import { WorkStats } from "./components/WorkStats.js";
 import { ActivityLane } from "./components/ActivityLane.js";
+import { CommandPalette, type PaletteItem } from "./components/CommandPalette.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
 import { UsageBar } from "./components/UsageBar.js";
@@ -305,6 +307,21 @@ export function App() {
     document.body.style.userSelect = "none";
   };
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteSessions, setPaletteSessions] = useState<PaletteItem[]>([]);
+
+  // ⌘K / Ctrl+K anywhere opens the command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   /**
    * Open the panel, scroll a section into view, and flash it.
    *
@@ -437,6 +454,88 @@ export function App() {
     setTargets(next);
   };
 
+  const jumpTo = (url: string, workspaceId: string, sessionId: string | null = null) => {
+    setSelection({ url, workspaceId, sessionId });
+    setTab("chat");
+  };
+
+  // When the palette opens, pull each connected machine's past conversations in
+  // so they're searchable and resumable from ⌘K, not just the sidebar.
+  useEffect(() => {
+    if (!paletteOpen) return;
+    let cancelled = false;
+    (async () => {
+      const found: PaletteItem[] = [];
+      for (const t of targets) {
+        if (workers[t.url]?.connection !== "connected") continue;
+        try {
+          const projects = await api.discover.projects(t.url);
+          for (const proj of projects) {
+            for (const sess of proj.sessions) {
+              found.push({
+                id: `sess-${t.url}-${sess.sessionId}`,
+                group: "Resume session",
+                label: sess.title ?? sess.firstPrompt ?? "Untitled conversation",
+                hint: proj.name,
+                icon: MessageSquare,
+                run: async () => {
+                  const ws = await openWorkspace(t.url, proj.path);
+                  const sid = await api.discover.adopt(t.url, ws.workspaceId, sess.sessionId, sess.title);
+                  jumpTo(t.url, ws.workspaceId, sid);
+                },
+              });
+            }
+          }
+        } catch {
+          // A machine that can't be scanned just contributes no sessions.
+        }
+      }
+      if (!cancelled) setPaletteSessions(found);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paletteOpen]);
+
+  const paletteItems = useMemo<PaletteItem[]>(() => {
+    const items: PaletteItem[] = [];
+    if (active) {
+      for (const { id, label, Icon } of TABS) {
+        items.push({ id: `tab-${id}`, group: "Go to", label, icon: Icon, run: () => setTab(id) });
+      }
+    }
+    for (const t of targets) {
+      for (const w of workers[t.url]?.workspaces ?? []) {
+        items.push({
+          id: `ws-${t.url}-${w.workspaceId}`,
+          group: "Workspaces",
+          label: w.name,
+          hint: w.branch ?? undefined,
+          icon: FolderOpen,
+          run: () => jumpTo(t.url, w.workspaceId),
+        });
+      }
+    }
+    for (const t of targets) {
+      items.push({
+        id: `machine-${t.url}`,
+        group: "Machines",
+        label: workers[t.url]?.machine?.hostname ?? t.url,
+        hint: workers[t.url]?.connection,
+        icon: Server,
+        run: () => {
+          const first = workers[t.url]?.workspaces[0];
+          if (first) jumpTo(t.url, first.workspaceId);
+        },
+      });
+    }
+    items.push(...paletteSessions);
+    items.push({ id: "act-add", group: "Actions", label: "Add machine", icon: Plus, run: () => setAdding(true) });
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targets, workers, active, paletteSessions]);
+
   // Hooks are all above this branch on purpose — an early return that skips
   // hooks changes their order between renders and crashes React.
   if (targets.length === 0 || adding) {
@@ -479,6 +578,7 @@ export function App() {
   return (
     <div className="flex h-screen flex-col">
       <ToastStack approvals={allApprovals} notices={feed} onResolve={resolveApproval} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} />
       <header className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-[#071950]">
