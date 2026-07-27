@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { WebSocket } from "ws";
+import { createServer, type Server } from "node:http";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
@@ -243,6 +244,81 @@ describe("commands", () => {
     c.send({ type: "approval.resolve", requestId: request.request.id, approved: false });
     const result = await c.waitFor("command.result", 6000);
     expect(result.approved).toBe(false);
+    c.close();
+  });
+});
+
+describe("push on approval over the wire", () => {
+  const TOKEN = "ExponentPushToken[integrationtesttoken1]";
+  let pushServer: Server;
+  const pushes: any[] = [];
+
+  beforeAll(async () => {
+    pushServer = await new Promise<Server>((resolve) => {
+      const s = createServer((req, res) => {
+        let data = "";
+        req.on("data", (c) => (data += c));
+        req.on("end", () => {
+          try {
+            pushes.push(...JSON.parse(data));
+          } catch {
+            /* ignore */
+          }
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ data: [{ status: "ok" }] }));
+        });
+      });
+      s.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    // Redirect Expo delivery to the mock for the duration of this suite.
+    process.env.OTTER_EXPO_PUSH_ENDPOINT = `http://127.0.0.1:${(pushServer.address() as any).port}/send`;
+  });
+
+  afterAll(() => {
+    pushServer.close();
+    delete process.env.OTTER_EXPO_PUSH_ENDPOINT;
+  });
+
+  it("delivers a push to a registered phone when an approval is raised", async () => {
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+
+    // Phone pairs and registers for push.
+    c.send({ type: "push.register", token: TOKEN });
+    c.send({ type: "workspace.open", requestId: "p-open", path: projectA });
+    const ws = await c.waitFor("workspace.opened");
+
+    // A sensitive command raises an approval, which should buzz the phone.
+    c.send({
+      type: "command.run",
+      workspaceId: ws.workspace.workspaceId,
+      commandId: "cmd-push",
+      command: "git push origin main",
+    });
+
+    const req = await c.waitFor("approval.request");
+    // Give the push (fire-and-forget from notify) a moment to land.
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(pushes.length).toBeGreaterThan(0);
+    expect(pushes[0].to).toBe(TOKEN);
+    expect(String(pushes[0].title)).toMatch(/approval/i);
+
+    // Resolve it so the command flow doesn't hang.
+    c.send({ type: "approval.resolve", requestId: req.request.id, approved: false });
+    c.close();
+  });
+
+  it("ignores an invalid push token", async () => {
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+    // Should not throw or disconnect; the worker just warns.
+    c.send({ type: "push.register", token: "not-a-real-token" });
+    c.send({ type: "audit.query", requestId: "after-bad-token", limit: 1 });
+    // If the socket were torn down, this would time out.
+    await c.waitFor("audit.entries");
     c.close();
   });
 });

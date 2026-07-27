@@ -9,6 +9,7 @@
     "backgroundColor": "#0a0a0b",
     "ios": { "supportsTablet": true, "bundleIdentifier": "dev.otter.mobile" },
     "android": { "package": "dev.otter.mobile", "adaptiveIcon": { "backgroundColor": "#071950" } },
-    "web": { "bundler": "metro" }
+    "web": { "bundler": "metro" },
+    "plugins": ["expo-notifications", "expo-secure-store"]
   }
 }
