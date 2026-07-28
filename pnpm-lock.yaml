@@ -4,6 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: 54684f3b0c9d192b6cf37c36d74f8820
+
 importers:
 
   .:
@@ -92,7 +94,7 @@ importers:
         version: 11.11.1
       lucide-react:
         specifier: ^0.454.0
-        version: 0.454.0(react@18.3.1)
+        version: 0.454.0(@types/react@18.3.31)(react@18.3.1)
       postcss:
         specifier: ^8.4.47
         version: 8.5.23
@@ -260,7 +262,7 @@ importers:
         version: 11.11.1
       lucide-react:
         specifier: ^0.454.0
-        version: 0.454.0(react@18.3.1)
+        version: 0.454.0(@types/react@18.3.31)(react@18.3.1)
       postcss:
         specifier: ^8.4.47
         version: 8.5.23
@@ -3584,6 +3586,7 @@ packages:
   lucide-react@0.454.0:
     resolution: {integrity: sha512-hw7zMDwykCLnEzgncEEjHeA6+45aeEzRYuKHuyRSOPkhko+J3ySGjGIzu+mmMfDFG1vazHepMaYFYHbTFAZAAQ==}
     peerDependencies:
+      '@types/react': '*'
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
 
   magic-string@0.30.21:
@@ -8936,8 +8939,9 @@ snapshots:
     dependencies:
       yallist: 4.0.0
 
-  lucide-react@0.454.0(react@18.3.1):
+  lucide-react@0.454.0(@types/react@18.3.31)(react@18.3.1):
     dependencies:
+      '@types/react': 18.3.31
       react: 18.3.1
 
   magic-string@0.30.21:
