@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm build:packages && pnpm --filter @ai-workspace/web build",
+  "outputDirectory": "dist",
+  "rewrites": [{ "source": "/((?!assets/|favicon).*)", "destination": "/index.html" }]
+}
