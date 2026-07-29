@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import type { ClientMessage, ServerMessage } from "@ai-workspace/protocol";
 import { decode, encode, isClientMessage } from "./frame.js";
 
@@ -20,6 +21,12 @@ export interface TransportServerHandlers {
 export interface TransportServerOptions {
   port: number;
   host?: string;
+  /**
+   * When set, the server speaks wss:// over an https server built from this
+   * cert/key instead of plain ws://. This is the whole difference between an
+   * encrypted Worker and a cleartext one.
+   */
+  tls?: { cert: string; key: string };
 }
 
 /**
@@ -33,9 +40,25 @@ export class TransportServer {
   private wss: WebSocketServer;
   private seq = 0;
   private readonly conns = new Map<string, TransportConnection>();
+  /** The https server backing wss://, when TLS is enabled — closed on shutdown. */
+  private httpsServer: HttpsServer | null = null;
+  /** True when this server speaks wss:// rather than ws://. */
+  readonly secure: boolean;
 
   constructor(opts: TransportServerOptions, private handlers: TransportServerHandlers = {}) {
-    this.wss = new WebSocketServer({ port: opts.port, host: opts.host ?? "127.0.0.1" });
+    const host = opts.host ?? "127.0.0.1";
+    this.secure = Boolean(opts.tls);
+
+    if (opts.tls) {
+      // Terminate TLS in an https server and run the WebSocket server on top,
+      // so clients connect with wss://.
+      this.httpsServer = createHttpsServer({ cert: opts.tls.cert, key: opts.tls.key });
+      this.httpsServer.on("error", (err) => this.handlers.onError?.(err as Error));
+      this.httpsServer.listen(opts.port, host);
+      this.wss = new WebSocketServer({ server: this.httpsServer });
+    } else {
+      this.wss = new WebSocketServer({ port: opts.port, host });
+    }
 
     this.wss.on("connection", (socket: WebSocket) => this.accept(socket));
     this.wss.on("error", (err) => this.handlers.onError?.(err as Error));
@@ -131,8 +154,16 @@ export class TransportServer {
     return new Promise((resolve) => {
       const done = setTimeout(resolve, 2000); // never block shutdown
       this.wss.close(() => {
-        clearTimeout(done);
-        resolve();
+        // The underlying https server (if any) holds the port — close it too.
+        if (this.httpsServer) {
+          this.httpsServer.close(() => {
+            clearTimeout(done);
+            resolve();
+          });
+        } else {
+          clearTimeout(done);
+          resolve();
+        }
       });
     });
   }

@@ -12,6 +12,16 @@ import { startWorker } from "./server.js";
 import { serveUi, uiDir, uiDirExists } from "./ui.js";
 import { installService, serviceStatus, uninstallService } from "./service.js";
 import { CrashReporter, crashReportingEnv } from "./crash.js";
+import {
+  generateCert,
+  writeCert,
+  readCert,
+  tlsConfigured,
+  certPaths,
+  fingerprint,
+  localAddresses,
+} from "./tls.js";
+import { rmSync } from "node:fs";
 import { configDir } from "./config.js";
 import { PROTOCOL_VERSION } from "@ai-workspace/protocol";
 import { log } from "./log.js";
@@ -68,6 +78,11 @@ Usage:
   otter service install    Run the Worker at login and restart it if it exits
   otter service uninstall  Remove the background service
   otter service status     Show whether the service is installed and running
+
+  otter cert             Generate a self-signed cert; the Worker then serves wss:// only
+  otter cert status      Show TLS state + the cert fingerprint to trust
+  otter cert regenerate  Re-issue the cert (re-trust it on every client)
+  otter cert remove      Delete the cert and go back to plain ws://
 
   otter help             Show this help
 
@@ -146,6 +161,66 @@ function cmdStatus(): void {
       : "on (no OTTER_CRASH_DSN set — local dumps only)"
     : "off (local dumps only)";
   console.log(`  crashReport: ${crash}`);
+  if (tlsConfigured(configDir())) {
+    const cert = readCert(configDir());
+    console.log(`  tls:         on — wss:// only`);
+    if (cert) console.log(`  fingerprint: ${fingerprint(cert.cert)}`);
+  } else {
+    console.log(`  tls:         off — ws:// (run \`otter cert\` to enable wss://)`);
+  }
+}
+
+/** The wss:// addresses a client can pair with, one per name/IP the cert covers. */
+function pairableUrls(port: number): string[] {
+  const { dns, ips } = localAddresses();
+  return [...dns, ...ips].map((h) => `wss://${h.includes(":") ? `[${h}]` : h}:${port}`);
+}
+
+function cmdCert(sub: string | undefined): void {
+  const home = configDir();
+  const paths = certPaths(home);
+
+  if (sub === "status" || sub === "show") {
+    if (!tlsConfigured(home)) {
+      console.log("TLS: off (Worker serves plain ws://). Run `otter cert` to enable wss://.");
+      return;
+    }
+    const cert = readCert(home);
+    console.log("TLS: on — the Worker serves wss:// only.");
+    console.log(`  cert:        ${paths.certFile}`);
+    if (cert) console.log(`  fingerprint: ${fingerprint(cert.cert)}`);
+    console.log("  Clients trust this self-signed cert by its fingerprint (like an SSH host key).");
+    return;
+  }
+
+  if (sub === "remove" || sub === "off") {
+    if (!tlsConfigured(home)) {
+      console.log("TLS is already off.");
+      return;
+    }
+    rmSync(paths.certFile, { force: true });
+    rmSync(paths.keyFile, { force: true });
+    console.log("Removed the TLS certificate. The Worker will serve plain ws:// on next start.");
+    return;
+  }
+
+  // Default (`otter cert` / `otter cert generate`): make a fresh self-signed cert.
+  if (tlsConfigured(home) && sub !== "generate" && sub !== "regenerate" && sub !== "force") {
+    console.log("A TLS certificate already exists — the Worker serves wss://.");
+    console.log(`  fingerprint: ${fingerprint(readCert(home)!.cert)}`);
+    console.log("  Re-issue it with `otter cert regenerate` (re-trust it on every client afterwards).");
+    return;
+  }
+
+  const cert = generateCert();
+  writeCert(home, cert);
+  const port = loadConfig()?.port ?? 4501;
+  console.log("Generated a self-signed TLS certificate. The Worker now serves wss:// only.");
+  console.log(`  cert:        ${paths.certFile}`);
+  console.log(`  fingerprint: ${fingerprint(cert.cert)}`);
+  console.log("\n  Pair the app with one of these secure addresses:");
+  for (const url of pairableUrls(port)) console.log(`    ${url}`);
+  console.log("\n  Restart the Worker to pick up the certificate:  otter worker start");
 }
 
 async function main(): Promise<void> {
@@ -209,6 +284,11 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
+  }
+
+  if (group === "cert") {
+    cmdCert(sub);
+    return;
   }
 
   if (group === "worker") {
