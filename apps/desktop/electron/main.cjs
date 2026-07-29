@@ -42,6 +42,23 @@ function createWindow(url) {
   return win;
 }
 
+// Workers can serve wss:// with a self-signed certificate (`otter cert`). A
+// public CA can't vouch for a Mac mini on your LAN, so we accept the worker's
+// self-signed cert here — the real authentication is the pairing code, which
+// only the genuine worker knows (trust-on-first-use, like an SSH host key).
+//
+// Scope matters: this only relaxes verification for wss:// / https:// worker
+// connections. The app's own renderer loads over http:// loopback, and the CSP
+// blocks any other external resource, so nothing else rides on this.
+app.on("certificate-error", (event, _webContents, url, _error, _certificate, callback) => {
+  if (url.startsWith("wss://") || url.startsWith("https://")) {
+    event.preventDefault();
+    callback(true); // trust the worker's self-signed cert
+  } else {
+    callback(false);
+  }
+});
+
 // Lets a test instance use an isolated profile so its single-instance lock and
 // renderer port don't collide with a copy the user already has running.
 if (process.env.AIW_USER_DATA) app.setPath("userData", process.env.AIW_USER_DATA);

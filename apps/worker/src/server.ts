@@ -35,6 +35,7 @@ import { RelayLink } from "./relay-link.js";
 import { AuditLog } from "./audit.js";
 import { GitRepo } from "./git.js";
 import { PushRegistry, sendExpoPush } from "./push.js";
+import { readCert, fingerprint } from "./tls.js";
 import { configDir } from "./config.js";
 import { log } from "./log.js";
 import { ClaudeCodeAdapter } from "./adapters/claude-code.js";
@@ -667,9 +668,15 @@ export function startWorker(config: WorkerConfig): RunningWorker {
 
   const approvalHttp = startApprovalEndpoint();
 
+  // TLS is opt-in via `otter cert`. Once a cert exists the transport speaks
+  // wss:// only — there is no plain-ws fallback, so an unencrypted client is
+  // refused at the TLS handshake rather than after connecting.
+  const cert = readCert(configDir());
+  const secure = cert !== null;
+  const scheme = secure ? "wss" : "ws";
 
   server = new TransportServer(
-    { port: config.port },
+    { port: config.port, tls: cert ? { cert: cert.cert, key: cert.key } : undefined },
     {
       onConnect(conn) {
         log.client("connected", `${conn.id} awaiting auth`);
@@ -1059,10 +1066,18 @@ export function startWorker(config: WorkerConfig): RunningWorker {
     workerId: config.workerId,
     agents,
     keepAwake: config.keepAwake,
-    url: `ws://127.0.0.1:${config.port}`,
+    url: `${scheme}://127.0.0.1:${config.port}`,
     approvalUrl: `http://127.0.0.1:${config.port + 1}/approval`,
     pairingCode: config.pairingCode,
   });
+
+  // With TLS on, the cert is self-signed — clients trust it by fingerprint, so
+  // print it (like an SSH host key) for the user to verify on first pairing.
+  if (secure && cert) {
+    log.info(`TLS on — wss:// only. cert fingerprint: ${fingerprint(cert.cert)}`);
+  } else {
+    log.warn("TLS off — traffic is unencrypted. Run `otter cert` to enable wss://.");
+  }
 
 
   // Optional: also make this Worker reachable through a relay.
