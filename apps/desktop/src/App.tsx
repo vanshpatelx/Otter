@@ -349,7 +349,16 @@ export function App() {
     });
   };
 
-  const api = useWorkers(targets);
+  const api = useWorkers(targets, (url, sessionToken) => {
+    // The Worker enrolled this device and issued a session token — store it in
+    // place of the pairing code, so the code is discarded and this device can
+    // be revoked independently.
+    setTargets((prev) => {
+      const next = prev.map((t) => (t.url === url ? { ...t, token: sessionToken } : t));
+      localStorage.setItem(STORE_KEY, JSON.stringify(next));
+      return next;
+    });
+  });
   const {
     workers,
     send,

@@ -277,7 +277,12 @@ export interface ApprovalRequest {
  * knowing which one it belongs to.
  */
 export type ClientMessage =
-  | { type: "hello"; clientId: string; token: string }
+  /**
+   * Authenticate. `token` is either the pairing code (enrolls this device and
+   * gets a session token back) or a previously-issued device session token.
+   * `label` names the device in the owner's session list.
+   */
+  | { type: "hello"; clientId: string; token: string; label?: string }
   | { type: "subscribe"; workerId: string }
   | { type: "workspace.open"; requestId: string; path: string }
   | { type: "workspace.close"; workspaceId: string }
@@ -343,7 +348,12 @@ export type ClientMessage =
 
 /** Worker -> Desktop */
 export type ServerMessage =
-  | { type: "auth.result"; ok: boolean; reason?: string }
+  /**
+   * On success after pairing-code auth, `sessionToken` is the device's
+   * long-lived token to store and present on future connects (so the shared
+   * code isn't resent), and `sessionId` is its revocable id.
+   */
+  | { type: "auth.result"; ok: boolean; reason?: string; sessionToken?: string; sessionId?: string }
   | { type: "machine"; machine: MachineSummary }
   | { type: "workspaces"; items: Workspace[] }
   | { type: "workspace.opened"; requestId: string; workspace: Workspace }

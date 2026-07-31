@@ -5,7 +5,7 @@ import { Logo } from "./src/components/Logo";
 import { colors, radius, space } from "./src/theme";
 import { useWorker, type WorkerTarget } from "./src/lib/useWorker";
 import { configureForegroundNotifications } from "./src/lib/push";
-import { loadTarget, saveTarget, clearTarget } from "./src/lib/storage";
+import { loadTarget, saveTarget, clearTarget, getClientId } from "./src/lib/storage";
 
 // Show approval notifications even while the app is in the foreground.
 configureForegroundNotifications();
@@ -40,15 +40,28 @@ const STATUS_COLOR = {
  */
 export function App() {
   const [target, setTarget] = useState<WorkerTarget | null>(null);
+  const [clientId, setClientId] = useState<string>();
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>("chat");
 
   useEffect(() => {
-    loadTarget().then((t) => {
+    Promise.all([loadTarget(), getClientId()]).then(([t, id]) => {
       setTarget(t);
+      setClientId(id);
       setLoaded(true);
     });
   }, []);
+
+  // The Worker issued this phone a session token — store it in place of the
+  // pairing code so the phone can be revoked on its own.
+  const onSession = (sessionToken: string) => {
+    setTarget((cur) => {
+      if (!cur) return cur;
+      const next = { ...cur, token: sessionToken };
+      void saveTarget(next);
+      return next;
+    });
+  };
 
   if (!loaded) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
@@ -71,6 +84,8 @@ export function App() {
   return (
     <Paired
       target={target}
+      clientId={clientId}
+      onSession={onSession}
       tab={tab}
       onTab={setTab}
       onUnpair={() => {
@@ -83,16 +98,20 @@ export function App() {
 
 function Paired({
   target,
+  clientId,
+  onSession,
   tab,
   onTab,
   onUnpair,
 }: {
   target: WorkerTarget;
+  clientId?: string;
+  onSession: (sessionToken: string) => void;
   tab: Tab;
   onTab: (t: Tab) => void;
   onUnpair: () => void;
 }) {
-  const conn = useWorker(target);
+  const conn = useWorker(target, { clientId, onSession });
 
   return (
     <SafeAreaView style={styles.root}>

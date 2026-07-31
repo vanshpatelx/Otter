@@ -35,6 +35,7 @@ import { RelayLink } from "./relay-link.js";
 import { AuditLog } from "./audit.js";
 import { GitRepo } from "./git.js";
 import { PushRegistry, sendExpoPush } from "./push.js";
+import { DeviceRegistry } from "./devices.js";
 import { readCert, fingerprint } from "./tls.js";
 import { configDir } from "./config.js";
 import { log } from "./log.js";
@@ -95,6 +96,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
   const approvals = new ApprovalManager();
   const audit = new AuditLog(configDir());
   const pushRegistry = new PushRegistry();
+  const devices = new DeviceRegistry(configDir());
   const adapters = buildAdapters(config);
   const defaultAgent: AgentKind | null = config.agents[0] ?? null;
 
@@ -692,16 +694,42 @@ export function startWorker(config: WorkerConfig): RunningWorker {
 
         switch (msg.type) {
           case "hello": {
-            if (msg.token !== config.pairingCode) {
+            // Two ways in: a previously-issued device session token, or the
+            // pairing code (which enrolls this device and hands back a token).
+            const existingSession = devices.authenticate(msg.token);
+            const byCode = !existingSession && msg.token === config.pairingCode;
+            if (!existingSession && !byCode) {
               log.error(`auth rejected for ${msg.clientId}`);
-              conn.send({ type: "auth.result", ok: false, reason: "invalid pairing code" });
+              conn.send({
+                type: "auth.result",
+                ok: false,
+                // A token-shaped credential that no longer validates means the
+                // device was revoked; anything else is a bad pairing code.
+                reason: msg.token.startsWith("otds_")
+                  ? "device access was revoked — pair again with the code"
+                  : "invalid pairing code",
+              });
               conn.close();
               return;
             }
             authed.add(conn.id);
             log.client("authed", msg.clientId);
             audit.record("client-authed", msg.clientId);
-            conn.send({ type: "auth.result", ok: true });
+
+            if (existingSession) {
+              devices.touch(existingSession.id);
+              conn.send({ type: "auth.result", ok: true });
+            } else {
+              // Enrolled with the code — issue (or refresh) this device's token.
+              const session = devices.enroll(msg.clientId, msg.label ?? "device");
+              log.info(`device enrolled: ${session.label} (${session.id})`);
+              conn.send({
+                type: "auth.result",
+                ok: true,
+                sessionToken: session.token,
+                sessionId: session.id,
+              });
+            }
             void broadcastState();
             // Rehydrate persisted conversations so the Desktop reconnects with
             // full context instead of an empty chat.

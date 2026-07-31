@@ -109,10 +109,37 @@ export interface CommandLine {
   output?: string;
 }
 
-/** One paired Worker: where it lives and the code we authenticate with. */
+/**
+ * One paired Worker: where it lives and the credential we authenticate with.
+ * `token` starts as the pairing code; after the first successful connect the
+ * Worker issues a per-device session token that replaces it, so the shared code
+ * is discarded and this device can be revoked on its own.
+ */
 export interface WorkerTarget {
   url: string;
   token: string;
+}
+
+/**
+ * A stable per-install id, so re-pairing this browser/app refreshes its one
+ * device session rather than creating a new one every time. Persisted; not a
+ * secret.
+ */
+function clientId(): string {
+  const KEY = "otter.clientId";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = `c_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
+/** A friendly device label for the owner's `otter sessions` list. */
+function deviceLabel(): string {
+  const web = typeof location !== "undefined" && location.protocol.startsWith("http");
+  const platform = typeof navigator !== "undefined" ? navigator.platform || "" : "";
+  return `Otter ${web ? "Web" : "Desktop"}${platform ? ` · ${platform}` : ""}`;
 }
 
 /** Live state for a single Worker connection (one machine). */
@@ -245,7 +272,12 @@ function emptyState(url: string): WorkerState {
  * Each Worker keeps its own chat, approvals and command history — the Desktop
  * is a multiplexer over independent machines.
  */
-export function useWorkers(targets: WorkerTarget[]): WorkersApi {
+export function useWorkers(
+  targets: WorkerTarget[],
+  /** Called when a Worker issues this device its session token, to persist it
+   *  in place of the pairing code (so the code is discarded after enrolling). */
+  onSession?: (url: string, sessionToken: string) => void,
+): WorkersApi {
   const [workers, setWorkers] = useState<Record<string, WorkerState>>({});
   const socketsRef = useRef<Map<string, WebSocket>>(new Map());
   const termListeners = useRef<Set<TerminalListener>>(new Set());
@@ -349,8 +381,9 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
           socket.send(
             JSON.stringify({
               type: "hello",
-              clientId: "desktop-ui",
+              clientId: clientId(),
               token: target.token,
+              label: deviceLabel(),
             } satisfies ClientMessage),
           );
         };
@@ -365,6 +398,12 @@ export function useWorkers(targets: WorkerTarget[]): WorkersApi {
           switch (msg.type) {
             case "auth.result":
               if (msg.ok) {
+                // First connect enrolls with the code and gets a device session
+                // token back; persist it in place of the code so future connects
+                // use the token and this device can be revoked on its own.
+                if (msg.sessionToken && msg.sessionToken !== target.token) {
+                  onSession?.(target.url, msg.sessionToken);
+                }
                 patch(target.url, (s) => ({ ...s, connection: "connected" }));
                 pushEvent(target.url, "LINK", "connected");
                 socket.send(
