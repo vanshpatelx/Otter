@@ -36,11 +36,6 @@
         "peerDependencies": {
           "@types/react": "*"
         }
-      },
-      "motion": {
-        "peerDependencies": {
-          "@types/react": "*"
-        }
       }
     }
   }

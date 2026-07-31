@@ -1,27 +1,27 @@
-"use client";
-
 import { cn } from "@/lib/utils";
-import type { MotionProps } from "motion/react";
-import { motion } from "motion/react";
-import type { CSSProperties, ElementType, JSX } from "react";
+import type { CSSProperties, ElementType } from "react";
 import { memo, useMemo } from "react";
 
-type MotionHTMLProps = MotionProps & Record<string, unknown>;
+/**
+ * A shimmering-text loader (the "Thinking…" effect) — a highlight sweeping
+ * across the letters via `bg-clip-text`.
+ *
+ * Pure CSS on purpose: this used to pull in `motion` just to animate one
+ * background-position, which dragged React-19 types into a React-18 app and
+ * broke the typecheck on CI. A keyframe does the same job with no dependency.
+ */
 
-// Cache motion components at module level to avoid creating during render
-const motionComponentCache = new Map<
-  keyof JSX.IntrinsicElements,
-  React.ComponentType<MotionHTMLProps>
->();
+const KEYFRAME_ID = "otter-shimmer-keyframes";
 
-const getMotionComponent = (element: keyof JSX.IntrinsicElements) => {
-  let component = motionComponentCache.get(element);
-  if (!component) {
-    component = motion.create(element);
-    motionComponentCache.set(element, component);
-  }
-  return component;
-};
+/** Inject the sweep keyframe once, lazily (no-op outside the browser). */
+function ensureKeyframes(): void {
+  if (typeof document === "undefined" || document.getElementById(KEYFRAME_ID)) return;
+  const style = document.createElement("style");
+  style.id = KEYFRAME_ID;
+  style.textContent =
+    "@keyframes otter-shimmer { from { background-position: 100% center } to { background-position: 0% center } }";
+  document.head.appendChild(style);
+}
 
 export interface TextShimmerProps {
   children: string;
@@ -33,44 +33,33 @@ export interface TextShimmerProps {
 
 const ShimmerComponent = ({
   children,
-  as: Component = "p",
+  as: Component = "span",
   className,
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
-  const MotionComponent = getMotionComponent(
-    Component as keyof JSX.IntrinsicElements
-  );
+  ensureKeyframes();
 
-  const dynamicSpread = useMemo(
-    () => (children?.length ?? 0) * spread,
-    [children, spread]
-  );
+  const dynamicSpread = useMemo(() => (children?.length ?? 0) * spread, [children, spread]);
 
   return (
-    <MotionComponent
-      animate={{ backgroundPosition: "0% center" }}
+    <Component
       className={cn(
-        "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",
-        "[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--color-background),#0000_calc(50%+var(--spread)))] [background-repeat:no-repeat,padding-box]",
-        className
+        "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent [background-repeat:no-repeat,padding-box]",
+        "[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--color-background),#0000_calc(50%+var(--spread)))]",
+        className,
       )}
-      initial={{ backgroundPosition: "100% center" }}
       style={
         {
           "--spread": `${dynamicSpread}px`,
           backgroundImage:
             "var(--bg), linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground))",
+          animation: `otter-shimmer ${duration}s linear infinite`,
         } as CSSProperties
       }
-      transition={{
-        duration,
-        ease: "linear",
-        repeat: Number.POSITIVE_INFINITY,
-      }}
     >
       {children}
-    </MotionComponent>
+    </Component>
   );
 };
 
