@@ -22,6 +22,7 @@ import {
   localAddresses,
 } from "./tls.js";
 import { rmSync } from "node:fs";
+import { DeviceRegistry } from "./devices.js";
 import { configDir } from "./config.js";
 import { PROTOCOL_VERSION } from "@ai-workspace/protocol";
 import { log } from "./log.js";
@@ -83,6 +84,10 @@ Usage:
   otter cert status      Show TLS state + the cert fingerprint to trust
   otter cert regenerate  Re-issue the cert (re-trust it on every client)
   otter cert remove      Delete the cert and go back to plain ws://
+
+  otter sessions         List the devices paired with this Worker
+  otter sessions revoke <id>   Revoke one device (a lost phone) — no code rotation
+  otter sessions revoke-all    Revoke every device; all must pair again
 
   otter help             Show this help
 
@@ -223,6 +228,55 @@ function cmdCert(sub: string | undefined): void {
   console.log("\n  Restart the Worker to pick up the certificate:  otter worker start");
 }
 
+function ago(ts: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+/** `otter sessions …` — list and revoke the devices paired with this Worker. */
+function cmdSessions(sub: string | undefined, rest: string[]): void {
+  const devices = new DeviceRegistry(configDir());
+
+  if (sub === "revoke") {
+    const id = rest[0];
+    if (!id) {
+      console.error("Usage: otter sessions revoke <device-id>   (see `otter sessions`)");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      devices.revoke(id)
+        ? `Revoked ${id}. That device is refused on its next connect; it can pair again with the code.`
+        : `No device with id ${id}. Run \`otter sessions\` to list them.`,
+    );
+    return;
+  }
+
+  if (sub === "revoke-all") {
+    const n = devices.revokeAll();
+    console.log(`Revoked ${n} device${n === 1 ? "" : "s"}. Every client must pair again with the code.`);
+    return;
+  }
+
+  // Default: list.
+  const list = devices.list();
+  if (list.length === 0) {
+    console.log("No paired devices yet. Devices appear here once they pair with the code.");
+    return;
+  }
+  console.log(`Paired devices (${list.length}):\n`);
+  for (const d of list) {
+    console.log(`  ${d.id}  ${d.label}`);
+    console.log(`      last seen ${ago(d.lastSeenAt)} · paired ${ago(d.createdAt)}`);
+  }
+  console.log(`\n  Revoke one:  otter sessions revoke <id>`);
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const [group, sub] = argv;
@@ -288,6 +342,11 @@ async function main(): Promise<void> {
 
   if (group === "cert") {
     cmdCert(sub);
+    return;
+  }
+
+  if (group === "sessions") {
+    cmdSessions(sub, argv.slice(2));
     return;
   }
 

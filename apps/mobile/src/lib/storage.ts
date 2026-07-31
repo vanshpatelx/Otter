@@ -35,6 +35,31 @@ export async function saveTarget(target: WorkerTarget): Promise<void> {
   }
 }
 
+/**
+ * A stable per-install id so this phone maps to one revocable device session on
+ * the Worker (two phones are two devices; a restart keeps the same one). Not a
+ * secret — kept in plain storage, generated once.
+ */
+const CLIENT_ID_KEY = "otter.clientId";
+
+export async function getClientId(): Promise<string> {
+  const gen = () => `m_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  try {
+    if (Platform.OS === "web") {
+      if (typeof localStorage === "undefined") return gen();
+      let id = localStorage.getItem(CLIENT_ID_KEY);
+      if (!id) localStorage.setItem(CLIENT_ID_KEY, (id = gen()));
+      return id;
+    }
+    const SecureStore = await import("expo-secure-store");
+    let id = await SecureStore.getItemAsync(CLIENT_ID_KEY);
+    if (!id) await SecureStore.setItemAsync(CLIENT_ID_KEY, (id = gen()));
+    return id;
+  } catch {
+    return gen();
+  }
+}
+
 export async function clearTarget(): Promise<void> {
   if (Platform.OS === "web") {
     if (typeof localStorage !== "undefined") localStorage.removeItem(KEY);

@@ -40,7 +40,14 @@ export interface WorkerConn {
   createSession: (workspaceId: string) => Promise<string>;
 }
 
-const CLIENT_ID = "otter-mobile";
+/** Options that carry the device identity and let it persist its session token. */
+export interface UseWorkerOptions {
+  /** Stable per-install id (from storage.getClientId). Falls back if unset. */
+  clientId?: string;
+  /** Called when the Worker issues this phone a session token, to store it in
+   *  place of the pairing code so the phone can be revoked on its own. */
+  onSession?: (sessionToken: string) => void;
+}
 
 /** Append streamed agent text to the trailing agent turn, or start one. */
 function appendAgentDelta(prev: ChatMsg[], text: string): ChatMsg[] {
@@ -71,7 +78,7 @@ function attachUsage(prev: ChatMsg[], usage: TurnUsage): ChatMsg[] {
  * workspaces, the chat transcripts, and above all the approvals. It reconnects
  * on drop so the app survives the network flapping as you move around.
  */
-export function useWorker(target: WorkerTarget | null): WorkerConn {
+export function useWorker(target: WorkerTarget | null, opts: UseWorkerOptions = {}): WorkerConn {
   const [status, setStatus] = useState<ConnStatus>("connecting");
   const [machine, setMachine] = useState<MachineSummary | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -102,7 +109,14 @@ export function useWorker(target: WorkerTarget | null): WorkerConn {
       socketRef.current = sock;
 
       sock.onopen = () => {
-        sock.send(JSON.stringify({ type: "hello", clientId: CLIENT_ID, token: target.token } satisfies ClientMessage));
+        sock.send(
+          JSON.stringify({
+            type: "hello",
+            clientId: opts.clientId ?? "otter-mobile",
+            token: target.token,
+            label: "Otter Mobile",
+          } satisfies ClientMessage),
+        );
       };
 
       sock.onmessage = (event) => {
@@ -115,6 +129,11 @@ export function useWorker(target: WorkerTarget | null): WorkerConn {
         switch (msg.type) {
           case "auth.result":
             if (msg.ok) {
+              // Enrolled with the code — persist the issued session token in
+              // place of the code so this phone can be revoked on its own.
+              if (msg.sessionToken && msg.sessionToken !== target.token) {
+                opts.onSession?.(msg.sessionToken);
+              }
               setStatus("connected");
               sock.send(JSON.stringify({ type: "subscribe", workerId: "local" } satisfies ClientMessage));
               // Hand the Worker our push token so approvals can buzz this phone

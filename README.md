@@ -125,6 +125,22 @@ It runs on iOS, Android, and the web (via react-native-web). The pairing code is
 kept in the device keychain on a phone, and the app reconnects on its own as the
 network comes and goes.
 
+## Devices & revocation
+
+Pairing with the code enrolls a device and issues it a **per-device session
+token**; the app stores that and stops using the shared code, so each phone or
+laptop has its own credential. List and revoke them from the Worker:
+
+```bash
+otter sessions                 # every paired device, with when it last connected
+otter sessions revoke <id>     # lock out a lost phone — refused on its next connect
+otter sessions revoke-all      # force everything to pair again
+```
+
+Revoking one device doesn't touch the code or any other device, and takes effect
+on the running Worker immediately. For encryption in transit, turn on TLS
+(`otter cert`, [docs/TLS.md](docs/TLS.md)) so the Worker serves `wss://` only.
+
 ## Remote access
 
 Direct transports (Tailscale, WireGuard, LAN, SSH tunnel) need no extra

@@ -248,6 +248,52 @@ describe("commands", () => {
   });
 });
 
+describe("device sessions over the wire", () => {
+  it("enrolls with the code, reconnects with the issued token, and honours revocation", async () => {
+    // 1) First connect with the pairing code → get a device session token back.
+    const c1 = client(); // no auto-hello; we send our own with a label
+    await c1.ready;
+    c1.send({ type: "hello", clientId: "phone-1", token: CODE, label: "Test Phone" });
+    const auth1 = await c1.waitFor("auth.result");
+    expect(auth1.ok).toBe(true);
+    expect(auth1.sessionToken).toMatch(/^otds_/);
+    expect(auth1.sessionId).toMatch(/^d_/);
+    const token = auth1.sessionToken!;
+    const deviceId = auth1.sessionId!;
+    c1.close();
+
+    // 2) Reconnect with ONLY the session token (no code) → authenticated.
+    const c2 = client();
+    await c2.ready;
+    c2.send({ type: "hello", clientId: "phone-1", token, label: "Test Phone" });
+    expect((await c2.waitFor("auth.result")).ok).toBe(true);
+    c2.close();
+
+    // 3) The owner revokes this device via the registry (as the CLI would).
+    const { DeviceRegistry } = await import("./devices.js");
+    new DeviceRegistry(home).revoke(deviceId);
+
+    // 4) The revoked token is now refused — no restart of the Worker needed.
+    const c3 = client();
+    await c3.ready;
+    c3.send({ type: "hello", clientId: "phone-1", token, label: "Test Phone" });
+    const auth3 = await c3.waitFor("auth.result");
+    expect(auth3.ok).toBe(false);
+    expect(auth3.reason).toMatch(/revoked/i);
+    c3.close();
+  });
+
+  it("still accepts the pairing code after a device is revoked (re-pair)", async () => {
+    const c = client();
+    await c.ready;
+    c.send({ type: "hello", clientId: "phone-2", token: CODE, label: "Re-pair" });
+    const auth = await c.waitFor("auth.result");
+    expect(auth.ok).toBe(true);
+    expect(auth.sessionToken).toBeTruthy(); // fresh session issued
+    c.close();
+  });
+});
+
 describe("push on approval over the wire", () => {
   const TOKEN = "ExponentPushToken[integrationtesttoken1]";
   let pushServer: Server;
