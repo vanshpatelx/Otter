@@ -283,6 +283,40 @@ describe("device sessions over the wire", () => {
     c3.close();
   });
 
+  it("lists and revokes devices over the wire (the Sessions UI path)", async () => {
+    // Enroll two devices.
+    const enroll = async (clientId: string, label: string) => {
+      const c = client();
+      await c.ready;
+      c.send({ type: "hello", clientId, token: CODE, label });
+      const auth = await c.waitFor("auth.result");
+      c.close();
+      return auth.sessionId!;
+    };
+    const phoneId = await enroll("ui-phone", "UI Phone");
+    await enroll("ui-laptop", "UI Laptop");
+
+    // A UI client lists them.
+    const c = client(CODE);
+    await c.ready;
+    await c.waitFor("auth.result");
+    c.send({ type: "sessions.list", requestId: "sl" });
+    const listed = await c.waitFor("sessions.result");
+    const labels = listed.devices.map((d) => d.label);
+    expect(labels).toContain("UI Phone");
+    expect(labels).toContain("UI Laptop");
+    // Tokens are never sent to the UI.
+    expect(listed.devices.every((d) => !("token" in d))).toBe(true);
+
+    // Revoke one; the result reflects the removal.
+    c.received.length = 0;
+    c.send({ type: "sessions.revoke", requestId: "sr", id: phoneId });
+    const after = await c.waitFor("sessions.result");
+    expect(after.devices.map((d) => d.label)).not.toContain("UI Phone");
+    expect(after.devices.map((d) => d.label)).toContain("UI Laptop");
+    c.close();
+  });
+
   it("still accepts the pairing code after a device is revoked (re-pair)", async () => {
     const c = client();
     await c.ready;

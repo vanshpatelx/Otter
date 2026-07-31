@@ -718,7 +718,9 @@ export function startWorker(config: WorkerConfig): RunningWorker {
 
             if (existingSession) {
               devices.touch(existingSession.id);
-              conn.send({ type: "auth.result", ok: true });
+              // Echo the id (not the token) so the client can mark itself in the
+              // device list and warn before revoking the session it's using.
+              conn.send({ type: "auth.result", ok: true, sessionId: existingSession.id });
             } else {
               // Enrolled with the code — issue (or refresh) this device's token.
               const session = devices.enroll(msg.clientId, msg.label ?? "device");
@@ -864,6 +866,13 @@ export function startWorker(config: WorkerConfig): RunningWorker {
               requestId: msg.requestId,
               entries: audit.query({ limit: msg.limit, kinds: msg.kinds, workspaceId: msg.workspaceId }),
             });
+            break;
+          case "sessions.list":
+            conn.send({ type: "sessions.result", requestId: msg.requestId, devices: devices.list() });
+            break;
+          case "sessions.revoke":
+            if (devices.revoke(msg.id)) log.info(`device revoked: ${msg.id}`);
+            conn.send({ type: "sessions.result", requestId: msg.requestId, devices: devices.list() });
             break;
           case "push.register":
             if (pushRegistry.register(msg.token)) {
