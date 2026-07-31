@@ -136,6 +136,13 @@ function clientId(): string {
   return id;
 }
 
+/** Flip a worker URL between ws:// and wss://, or null if it's neither. */
+export function flipScheme(url: string): string | null {
+  if (url.startsWith("wss://")) return `ws://${url.slice("wss://".length)}`;
+  if (url.startsWith("ws://")) return `wss://${url.slice("ws://".length)}`;
+  return null;
+}
+
 /** A friendly device label for the owner's `otter sessions` list. */
 function deviceLabel(): string {
   const web = typeof location !== "undefined" && location.protocol.startsWith("http");
@@ -303,6 +310,13 @@ export function useWorkers(
   const hostLabels = useRef<Map<string, string>>(new Map());
   /** url -> this device's own session id there, so the UI can mark "this device". */
   const ownSessionIds = useRef<Map<string, string>>(new Map());
+  /**
+   * url -> the scheme-corrected url actually dialed. If a paired `ws://` worker
+   * turned on TLS (now wss://-only), or a `wss://` one turned it off, the stored
+   * address is a scheme off. We flip ws:⇄wss once, in memory, so it reconnects
+   * automatically instead of retrying a doomed handshake forever.
+   */
+  const urlOverrides = useRef<Map<string, string>>(new Map());
   const key = targets.map((t) => `${t.url}|${t.token}`).join(",");
 
   const hostOf = (url: string) => {
@@ -383,12 +397,15 @@ export function useWorkers(
 
       const open = () => {
         if (disposed) return;
+        const effectiveUrl = urlOverrides.current.get(target.url) ?? target.url;
         patch(target.url, (s) => ({ ...s, connection: "connecting" }));
-        const socket = new WebSocket(target.url);
+        const socket = new WebSocket(effectiveUrl);
         sockets.set(target.url, socket);
         let unauthorized = false;
+        let opened = false;
 
         socket.onopen = () => {
+          opened = true;
           socket.send(
             JSON.stringify({
               type: "hello",
@@ -721,6 +738,17 @@ export function useWorkers(
         socket.onclose = () => {
           sockets.delete(target.url);
           if (unauthorized || disposed) return;
+          // Handshake never completed and we haven't tried the other scheme yet:
+          // the worker likely toggled TLS. Flip ws:⇄wss once and retry fast.
+          if (!opened && !urlOverrides.current.has(target.url)) {
+            const flipped = flipScheme(effectiveUrl);
+            if (flipped) {
+              urlOverrides.current.set(target.url, flipped);
+              pushEvent(target.url, "LINK", `retrying over ${flipped.startsWith("wss:") ? "wss://" : "ws://"}`);
+              retries.push(setTimeout(open, 250));
+              return;
+            }
+          }
           patch(target.url, (s) => ({ ...s, connection: "disconnected" }));
           pushEvent(target.url, "DROP", "connection lost — retrying");
           retries.push(setTimeout(open, 1000));
