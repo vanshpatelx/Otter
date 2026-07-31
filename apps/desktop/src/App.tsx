@@ -18,6 +18,7 @@ import {
   Server,
   History,
   MessageSquare,
+  Smartphone,
 } from "lucide-react";
 import type { ApprovalRequest, Workspace } from "@ai-workspace/protocol";
 import {
@@ -43,6 +44,7 @@ import { CommandPalette, type PaletteItem } from "./components/CommandPalette.js
 import { AuditPanel } from "./components/AuditPanel.js";
 import { RunningTerminals } from "./components/RunningTerminals.js";
 import { GitPanel } from "./components/GitPanel.js";
+import { SessionsPanel } from "./components/SessionsPanel.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import { Markdown } from "./components/Markdown.js";
 import { ToolCall } from "./components/ToolCall.js";
@@ -318,6 +320,8 @@ export function App() {
   const [auditFor, setAuditFor] = useState<string | null>(null);
   /** Worker url whose machine-wide terminals view is open, or null. */
   const [terminalsFor, setTerminalsFor] = useState<string | null>(null);
+  /** Worker url whose paired-devices panel is open, or null. */
+  const [sessionsFor, setSessionsFor] = useState<string | null>(null);
 
   // ⌘K / Ctrl+K anywhere opens the command palette.
   useEffect(() => {
@@ -565,6 +569,14 @@ export function App() {
           icon: Terminal,
           run: () => setTerminalsFor(t.url),
         });
+        items.push({
+          id: `sessions-${t.url}`,
+          group: "Machines",
+          label: `Paired devices — ${host}`,
+          hint: "see & revoke devices",
+          icon: Smartphone,
+          run: () => setSessionsFor(t.url),
+        });
       }
     }
     items.push(...paletteSessions);
@@ -630,6 +642,14 @@ export function App() {
         hostname={terminalsFor ? (workers[terminalsFor]?.machine?.hostname ?? terminalsFor) : ""}
         terminal={api.terminal}
         connected={terminalsFor ? workers[terminalsFor]?.connection === "connected" : false}
+      />
+      <SessionsPanel
+        open={sessionsFor !== null}
+        onClose={() => setSessionsFor(null)}
+        hostname={sessionsFor ? (workers[sessionsFor]?.machine?.hostname ?? sessionsFor) : ""}
+        currentId={sessionsFor ? api.sessions.currentId(sessionsFor) : undefined}
+        list={() => (sessionsFor ? api.sessions.list(sessionsFor) : Promise.resolve([]))}
+        revoke={(id) => (sessionsFor ? api.sessions.revoke(sessionsFor, id) : Promise.resolve([]))}
       />
       <header className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-2">

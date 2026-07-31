@@ -107,6 +107,18 @@ export interface AuditEntry {
   detail?: string;
 }
 
+/** A device paired with the Worker (public view — never includes the token). */
+export interface DeviceInfo {
+  /** Short public id, used to revoke. */
+  id: string;
+  /** Human label, e.g. "Vansh's iPhone". */
+  label: string;
+  /** The client's stable install id. */
+  clientId: string;
+  createdAt: number;
+  lastSeenAt: number;
+}
+
 /** One changed file in a workspace's git working tree. */
 export interface GitFileChange {
   /** Repo-relative path. */
@@ -301,6 +313,10 @@ export type ClientMessage =
   /** A phone registers its Expo push token so approvals can buzz it. */
   | { type: "push.register"; token: string }
   | { type: "push.unregister"; token: string }
+  /** List the devices paired with this Worker. */
+  | { type: "sessions.list"; requestId: string }
+  /** Revoke a paired device by id; refused on its next connect. */
+  | { type: "sessions.revoke"; requestId: string; id: string }
   /** Git working-tree status for a workspace. */
   | { type: "git.status"; requestId: string; workspaceId: string }
   /** Unified diff for one file, staged or unstaged. */
@@ -378,6 +394,8 @@ export type ServerMessage =
   | { type: "terminal.output"; terminalId: string; data: string }
   | { type: "terminal.sessions"; requestId: string; sessions: TerminalSession[] }
   | { type: "audit.entries"; requestId: string; entries: AuditEntry[] }
+  /** The paired-device list, returned for sessions.list and after a revoke. */
+  | { type: "sessions.result"; requestId: string; devices: DeviceInfo[] }
   | { type: "git.status.result"; requestId: string; status: GitStatus }
   | { type: "git.diff.result"; requestId: string; path: string; staged: boolean; diff: string }
   /** Ack for stage/unstage/commit; `ok` false carries a reason in `message`. */

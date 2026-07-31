@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   AuditKind,
   ClientMessage,
+  DeviceInfo,
   GitStatus,
   FileEntry,
   DiscoveredProject,
@@ -223,6 +224,14 @@ export interface WorkersApi {
     /** The machine's durable event trail, newest first. */
     query: (url: string, opts?: { limit?: number; kinds?: AuditKind[]; workspaceId?: string }) => Promise<AuditEntry[]>;
   };
+  sessions: {
+    /** Devices paired with the machine. */
+    list: (url: string) => Promise<DeviceInfo[]>;
+    /** Revoke a device; resolves to the updated list. */
+    revoke: (url: string, id: string) => Promise<DeviceInfo[]>;
+    /** This device's own session id on that machine, if known (to mark "you"). */
+    currentId: (url: string) => string | undefined;
+  };
   git: {
     status: (url: string, workspaceId: string) => Promise<GitStatus>;
     diff: (url: string, workspaceId: string, path: string, staged: boolean) => Promise<string>;
@@ -292,6 +301,8 @@ export function useWorkers(
   const eventSeq = useRef(0);
   /** url -> short host label, so events read "macbook" not "ws://127…". */
   const hostLabels = useRef<Map<string, string>>(new Map());
+  /** url -> this device's own session id there, so the UI can mark "this device". */
+  const ownSessionIds = useRef<Map<string, string>>(new Map());
   const key = targets.map((t) => `${t.url}|${t.token}`).join(",");
 
   const hostOf = (url: string) => {
@@ -404,6 +415,7 @@ export function useWorkers(
                 if (msg.sessionToken && msg.sessionToken !== target.token) {
                   onSession?.(target.url, msg.sessionToken);
                 }
+                if (msg.sessionId) ownSessionIds.current.set(target.url, msg.sessionId);
                 patch(target.url, (s) => ({ ...s, connection: "connected" }));
                 pushEvent(target.url, "LINK", "connected");
                 socket.send(
@@ -546,6 +558,12 @@ export function useWorkers(
               const pending = fsPending.current.get(msg.requestId);
               fsPending.current.delete(msg.requestId);
               pending?.resolve(msg.entries);
+              break;
+            }
+            case "sessions.result": {
+              const pending = fsPending.current.get(msg.requestId);
+              fsPending.current.delete(msg.requestId);
+              pending?.resolve(msg.devices);
               break;
             }
             case "git.status.result": {
@@ -938,6 +956,17 @@ export function useWorkers(
     [request],
   );
 
+  const sessions = useMemo(
+    () => ({
+      list: (url: string) =>
+        request<DeviceInfo[]>(url, (requestId) => ({ type: "sessions.list", requestId })),
+      revoke: (url: string, id: string) =>
+        request<DeviceInfo[]>(url, (requestId) => ({ type: "sessions.revoke", requestId, id })),
+      currentId: (url: string) => ownSessionIds.current.get(url),
+    }),
+    [request],
+  );
+
   const git = useMemo(
     () => ({
       status: (url: string, workspaceId: string) =>
@@ -993,6 +1022,7 @@ export function useWorkers(
     preview,
     vscode,
     audit,
+    sessions,
     git,
     discover,
   };
