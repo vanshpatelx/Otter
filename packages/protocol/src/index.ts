@@ -76,6 +76,8 @@ export interface TerminalSession {
   rows: number;
   createdAt: number;
   lastActivity: number;
+  /** tmux session name when the terminal is shared — `tmux attach -t <this>`. */
+  tmux?: string;
 }
 
 /** The categories of event the Worker keeps a durable record of. */

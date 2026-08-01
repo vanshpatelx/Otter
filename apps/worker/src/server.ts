@@ -23,7 +23,7 @@ import { KeepAwake } from "./keepawake.js";
 import { agentLabel } from "./agents.js";
 import { SessionStore } from "./session.js";
 import { ApprovalManager, classifyCommand } from "./approvals.js";
-import { TerminalManager } from "./terminals.js";
+import { TerminalManager, resolveTmux } from "./terminals.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import { detectPreviewServers, reloadMetro } from "./preview.js";
 import { VSCodeServer } from "./vscode.js";
@@ -95,10 +95,17 @@ export interface StartOptions {
    * to make the Worker reachable from other devices.
    */
   host?: string;
+  /**
+   * Back terminals with tmux so the same live session is attachable directly on
+   * the Worker's machine (`tmux attach -t …`). Requires tmux; ignored if absent.
+   */
+  sharedTerminals?: boolean;
 }
 
 export function startWorker(config: WorkerConfig, options: StartOptions = {}): RunningWorker {
   const bindHost = options.host ?? "127.0.0.1";
+  // Shared terminals need tmux on this machine; null falls back to a plain shell.
+  const tmuxBin = options.sharedTerminals ? resolveTmux() : null;
   const keepAwake = new KeepAwake(config.keepAwake);
   keepAwake.start();
 
@@ -181,13 +188,17 @@ export function startWorker(config: WorkerConfig, options: StartOptions = {}): R
     }
   }
 
-  const terminals = new TerminalManager({
-    onData: (terminalId, data) => server.broadcast({ type: "terminal.output", terminalId, data }),
-    onExit: (terminalId, code) => {
-      audit.record("terminal-exited", terminalId, { detail: code == null ? "killed" : `exit ${code}` });
-      server.broadcast({ type: "terminal.exit", terminalId, code });
+  const terminals = new TerminalManager(
+    {
+      onData: (terminalId, data) => server.broadcast({ type: "terminal.output", terminalId, data }),
+      onExit: (terminalId, code) => {
+        audit.record("terminal-exited", terminalId, { detail: code == null ? "killed" : `exit ${code}` });
+        server.broadcast({ type: "terminal.exit", terminalId, code });
+      },
     },
-  });
+    undefined,
+    tmuxBin,
+  );
 
   let activeTasks = 0;
   /** workspaceId -> what it is currently doing, for the dashboard. */
@@ -855,6 +866,8 @@ export function startWorker(config: WorkerConfig, options: StartOptions = {}): R
             } else {
               log.terminal("started", msg.terminalId);
               audit.record("terminal-started", cwd, { workspaceId: msg.workspaceId });
+              const tmux = terminals.tmuxOf(msg.terminalId);
+              if (tmux) log.info(`shared terminal — attach on this machine: tmux attach -t ${tmux}`);
             }
             break;
           }
@@ -1136,6 +1149,11 @@ export function startWorker(config: WorkerConfig, options: StartOptions = {}): R
       log.info(`  ${scheme}://${ip.includes(":") ? `[${ip}]` : ip}:${config.port}`);
     }
     if (!secure) log.warn("bound off-loopback without TLS — fine over Tailscale/WireGuard (already encrypted); otherwise run `otter cert`.");
+  }
+
+  if (options.sharedTerminals) {
+    if (tmuxBin) log.info("shared terminals on — app terminals are tmux sessions (attach here with `tmux attach`).");
+    else log.warn("shared terminals requested but tmux was not found — install tmux (e.g. `brew install tmux`).");
   }
 
 
