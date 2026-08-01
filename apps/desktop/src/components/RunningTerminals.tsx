@@ -118,6 +118,14 @@ export function RunningTerminals({
                     <span className="block truncate text-[10px] text-muted-foreground">
                       {idle(s.lastActivity)} · {s.cols}×{s.rows}
                     </span>
+                    {s.tmux && (
+                      <span
+                        className="block truncate font-mono text-[10px] text-emerald-400/80"
+                        title="Attach this exact session on the worker machine"
+                      >
+                        tmux attach -t {s.tmux}
+                      </span>
+                    )}
                   </span>
                   <span
                     role="button"
