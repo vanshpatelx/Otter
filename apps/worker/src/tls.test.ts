@@ -71,6 +71,28 @@ describe("tls: on-disk store", () => {
   });
 });
 
+describe("host binding", () => {
+  it("binds to 0.0.0.0 (remote-reachable) and still accepts loopback clients", async () => {
+    const server = new TransportServer(
+      { port: 4617, host: "0.0.0.0" },
+      { onMessage: (conn, msg) => msg.type === "hello" && conn.send({ type: "auth.result", ok: true }) },
+    );
+    await new Promise((r) => setTimeout(r, 150));
+    const connected = await new Promise<boolean>((resolve) => {
+      const sock = new WebSocket("ws://127.0.0.1:4617");
+      sock.on("open", () => sock.send(JSON.stringify({ type: "hello", clientId: "t", token: "x" })));
+      sock.on("message", () => {
+        resolve(true);
+        sock.close();
+      });
+      sock.on("error", () => resolve(false));
+      setTimeout(() => resolve(false), 2000);
+    });
+    await server.close();
+    expect(connected).toBe(true);
+  });
+});
+
 describe("tls: real wss handshake through TransportServer", () => {
   const PORT = 4611;
   let server: TransportServer;
