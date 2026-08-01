@@ -36,7 +36,7 @@ import { AuditLog } from "./audit.js";
 import { GitRepo } from "./git.js";
 import { PushRegistry, sendExpoPush } from "./push.js";
 import { DeviceRegistry } from "./devices.js";
-import { readCert, fingerprint } from "./tls.js";
+import { readCert, fingerprint, localAddresses } from "./tls.js";
 import { configDir } from "./config.js";
 import { log } from "./log.js";
 import { ClaudeCodeAdapter } from "./adapters/claude-code.js";
@@ -88,7 +88,17 @@ function buildAdapters(config: WorkerConfig): Map<AgentKind, AgentAdapter> {
   return adapters;
 }
 
-export function startWorker(config: WorkerConfig): RunningWorker {
+export interface StartOptions {
+  /**
+   * Interface to bind the transport to. Defaults to 127.0.0.1 (loopback only).
+   * Set to "0.0.0.0" or a specific address (e.g. this machine's Tailscale IP)
+   * to make the Worker reachable from other devices.
+   */
+  host?: string;
+}
+
+export function startWorker(config: WorkerConfig, options: StartOptions = {}): RunningWorker {
+  const bindHost = options.host ?? "127.0.0.1";
   const keepAwake = new KeepAwake(config.keepAwake);
   keepAwake.start();
 
@@ -678,7 +688,7 @@ export function startWorker(config: WorkerConfig): RunningWorker {
   const scheme = secure ? "wss" : "ws";
 
   server = new TransportServer(
-    { port: config.port, tls: cert ? { cert: cert.cert, key: cert.key } : undefined },
+    { port: config.port, host: bindHost, tls: cert ? { cert: cert.cert, key: cert.key } : undefined },
     {
       onConnect(conn) {
         log.client("connected", `${conn.id} awaiting auth`);
@@ -1114,6 +1124,18 @@ export function startWorker(config: WorkerConfig): RunningWorker {
     log.info(`TLS on — wss:// only. cert fingerprint: ${fingerprint(cert.cert)}`);
   } else {
     log.warn("TLS off — traffic is unencrypted. Run `otter cert` to enable wss://.");
+  }
+
+  // Bound beyond loopback (e.g. for Tailscale/LAN): the pairing address is no
+  // longer 127.0.0.1, so print the addresses another device can actually dial.
+  if (bindHost !== "127.0.0.1" && bindHost !== "localhost") {
+    const { ips } = localAddresses();
+    const reachable = ips.filter((ip) => !ip.startsWith("127.") && ip !== "::1");
+    log.info(`reachable from other devices (bound ${bindHost}):`);
+    for (const ip of reachable) {
+      log.info(`  ${scheme}://${ip.includes(":") ? `[${ip}]` : ip}:${config.port}`);
+    }
+    if (!secure) log.warn("bound off-loopback without TLS — fine over Tailscale/WireGuard (already encrypted); otherwise run `otter cert`.");
   }
 
 

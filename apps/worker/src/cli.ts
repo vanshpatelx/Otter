@@ -73,6 +73,8 @@ Usage:
                          --transport <kind>    tailscale|wireguard|local|ssh
                          --keep-awake <policy> while-active|always|off
   otter worker start     Start the Worker (transport server + keep-awake)
+                         --host <addr>   bind address (default 127.0.0.1;
+                                         use 0.0.0.0 or a Tailscale IP for remote devices)
   otter worker status    Show this Worker's configuration
   otter ui [--port n]    Serve the Desktop UI (default http://127.0.0.1:5180)
 
@@ -93,7 +95,7 @@ Usage:
 
 Docs: https://github.com/vanshpatelx/Otter`;
 
-async function cmdStart(): Promise<void> {
+async function cmdStart(opts: { host?: string } = {}): Promise<void> {
   const config = loadConfig();
   if (!config) {
     console.error("No Worker config found. Run `otter worker init` first.");
@@ -113,7 +115,7 @@ async function cmdStart(): Promise<void> {
   reporter.install();
   if (reporter.willSend) log.info("crash reporting on (redacted reports → OTTER_CRASH_DSN)");
 
-  const worker = startWorker(config);
+  const worker = startWorker(config, { host: opts.host });
 
   let shuttingDown = false;
   const shutdown = () => {
@@ -356,7 +358,7 @@ async function main(): Promise<void> {
         await runInit(initOptionsFromFlags(flags));
         return;
       case "start":
-        await cmdStart();
+        await cmdStart({ host: typeof flags.host === "string" ? flags.host : undefined });
         return;
       case "status":
         cmdStatus();
